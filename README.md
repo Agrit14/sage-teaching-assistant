@@ -1,116 +1,158 @@
-# Sage — Backend
+# Sage — Workflow Engine
 
-A Spring Boot backend with PostgreSQL, exposing a single endpoint that takes a
-request and returns a response.
+A Spring Boot + PostgreSQL backend that runs multi-stage workflows. Each stage does
+one fixed job, and the run only advances when the user approves what it produced.
 
-No Telegram, no bot, no external services. Something else calls this API.
+No Telegram, no bot. Something else calls this API.
 
-## Stack
+---
 
-| Piece | Version |
-|---|---|
-| Java | 17 (LTS) |
-| Spring Boot | 3.5.16 |
-| PostgreSQL | 17 (via Docker) |
-| Flyway | schema migrations |
-| Maven | build |
+## The idea
+
+A long job done in one shot is hard to check. Split it into stages, get a human to
+sign off at each boundary, and the final output is far more likely to be right.
+
+So the engine enforces one rule: **a stage's output must be approved before the next
+stage runs.** Approving is the only way forward. Anything else is treated as
+feedback and sends the stage back around.
+
+```
+stage 0 ──output──▶ user reviews ──approve──▶ stage 1 ──output──▶ user reviews ──approve──▶ stage 2 ──▶ done
+                        │                                                       │
+                     feedback                                                feedback
+                        │                                                       │
+                        └──────── stage 0 re-runs ────┘         └──── stage 1 re-runs ────┘
+```
+
+---
+
+## The workflow
+
+One workflow is registered: **`educational-notes`** — "Educational notes and worksheet".
+
+| # | Stage key | Name | Job |
+|---|---|---|---|
+| 0 | `confirm` | Confirm the request | Restate what the user is asking and get a yes |
+| 1 | `research` | Research and draft | Research the confirmed request, produce a Word draft |
+| 2 | `template` | Apply template and export PDF | Lay the approved draft into the template, produce a PDF |
+
+**Every stage is currently a stub.** Each one produces a realistic message and a
+correctly-shaped output, but the actual work — web search, model call, PDF render —
+is not implemented. Each stage has a `TODO` marking exactly where its tool goes.
+That was the agreed split: build the engine first, choose the tools next.
 
 ---
 
 ## Running it
 
-### 1. Start PostgreSQL
-
 ```bash
-docker compose up -d
+docker compose up -d          # PostgreSQL 17 on host port 5433
+mvn spring-boot:run           # listens on 8081
 ```
 
-Postgres 17 on **host port 5433** (not 5432, to avoid clashing with a local
-install). Database `sage`, user `sage`, password `sage`. Data persists in the
-`sage-pgdata` volume.
-
-### 2. Start the app
-
-```bash
-mvn spring-boot:run
-```
-
-Listens on **port 8081**. Confirm it is up:
-
-```bash
-curl http://localhost:8081/actuator/health
-# {"status":"UP"}
-```
+Health check: `curl http://localhost:8081/actuator/health`
 
 ---
 
-## The endpoint
+## API
 
-### `POST /api/v1/request`
+Base path `/api/v1/workflows`.
 
-Request:
+### `GET /api/v1/workflows`
+
+Lists the workflows available to start, with their stages in order.
+
+### `POST /api/v1/workflows/runs`
+
+Starts a run and executes stage 0.
 
 ```json
-{ "message": "hello from the calling app" }
+{ "workflowKey": "educational-notes", "message": "notes and a worksheet on photosynthesis for class 8" }
 ```
-
-Response:
 
 ```json
-{ "reply": "Received: hello from the calling app" }
-```
-
-```bash
-curl -X POST http://localhost:8081/api/v1/request \
-  -H 'Content-Type: application/json' \
-  -d '{"message": "hello from the calling app"}'
-```
-
-A blank or missing `message` returns **400**.
-
-### Where the logic goes
-
-`src/main/java/com/sage/teachingassistant/service/ResponseService.java`
-
-```java
-public String respond(String message) {
-    // TODO: replace with the real response logic.
-    return "Received: " + message;
+{
+  "runId": "5766563a-2763-4cb4-91f9-79d73f0c8155",
+  "workflowKey": "educational-notes",
+  "status": "AWAITING_APPROVAL",
+  "stageIndex": 0,
+  "stageCount": 3,
+  "stageKey": "confirm",
+  "stageName": "Confirm the request",
+  "message": "Before I build anything, let me check I've understood you...",
+  "output": { "confirm.confirmedRequest": "notes and a worksheet on photosynthesis for class 8" },
+  "completed": false
 }
 ```
 
-That method is the only place response behaviour lives right now. It is a
-placeholder that echoes the input, so the wiring can be exercised end to end.
+### `POST /api/v1/workflows/runs/{runId}/messages`
+
+The one call that moves a run. What happens depends on the message:
+
+| Message | Effect |
+|---|---|
+| `"yes"` | Approves the current stage, advances to the next one |
+| `"yes"` on the last stage | Completes the run |
+| anything else | Treats it as feedback, re-runs the current stage |
+
+```json
+{ "message": "yes" }
+```
+
+### `GET /api/v1/workflows/runs/{runId}`
+
+The run's position plus its full execution history, including every revision.
+
+### Errors
+
+| Status | When |
+|---|---|
+| `400` | Blank `message`, or missing `workflowKey` |
+| `404` | Unknown workflow key, or unknown run id |
+| `409` | Message sent to a run that has already finished |
 
 ---
 
-## Configuration
+## Design notes
 
-All environment-overridable:
+**Stages are independent.** A stage never calls another stage and never reads
+another stage's code. It receives a `StageContext` and returns a `StageResult`.
+Anything it needs from earlier stages arrives in `context.priorOutputs()`.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `SAGE_PORT` | `8081` | HTTP port |
-| `SAGE_DB_URL` | `jdbc:postgresql://localhost:5433/sage` | JDBC URL |
-| `SAGE_DB_USER` | `sage` | Database user |
-| `SAGE_DB_PASSWORD` | `sage` | Database password |
+**The contract is one file.** `WorkflowPayload` holds the agreed output keys
+(`confirm.confirmedRequest`, `research.draftDocument`, `template.finalPdf`). Stages
+reference those names, not each other, so any stage can be rewritten in isolation
+as long as it honours the contract.
 
-Port 8081 rather than the usual 8080 because something else on this machine
-already occupies 8080.
+**Ordering lives in one place.** `WorkflowCatalog` declares the sequence. Stages
+carry no ordering, so the sequence cannot drift out of step with the code. The
+definition validates at startup that every stage's `workflowKey` matches and that
+no two stages share a key.
+
+**Approval is deliberately strict.** `KeywordApprovalClassifier` approves only when
+the message is, on its own, an unambiguous yes. `"yes but add more on mitosis"` is
+treated as feedback. Being strict costs one extra round trip; being loose silently
+skips work the user wanted changed. It is behind an `ApprovalClassifier` interface
+because this is a judgement call that will eventually want a model behind it.
+
+**The engine is not `@Transactional`.** Each repository call is its own short
+transaction, so a stage runs with no transaction open. That matters once these
+stages do real work — a web search or a model call held open across a database
+connection would exhaust the pool.
 
 ---
 
 ## Database
 
-PostgreSQL is connected and verified, but **there is no schema yet** — no
-entities, no tables. The database is intentionally empty until the data model is
-decided.
+Two tables, created by `src/main/resources/db/migration/V1__workflow_engine.sql`:
 
-Migrations go in `src/main/resources/db/migration/` and are applied
-automatically on startup. Name them `V1__something.sql`, `V2__...` and so on.
+- **`workflow_runs`** — one row per run: the workflow, the status, and the current
+  stage index. The run holds its position and nothing else.
+- **`stage_executions`** — one row per stage execution, including every revision.
+  Cascades on run delete. This is the audit trail.
 
-Hibernate runs with `ddl-auto=validate`, so once entities exist, the entity
-mapping and the migration must agree.
+Hibernate runs with `ddl-auto=validate`, so entities and migrations must change
+together. Add `V2__*.sql` rather than editing `V1`.
 
 ---
 
@@ -118,29 +160,58 @@ mapping and the migration must agree.
 
 ```
 src/main/java/com/sage/teachingassistant/
-├── SageTeachingAssistantApplication.java
 ├── api/
-│   ├── RequestController.java        the endpoint
+│   ├── WorkflowController.java        the three endpoints
+│   ├── WorkflowExceptionHandler.java  workflow errors -> HTTP status
+│   ├── RequestController.java         (see note below)
 │   └── dto/
-│       ├── ApiRequest.java           { "message": "..." }
-│       └── ApiResponse.java          { "reply": "..." }
-└── service/
-    └── ResponseService.java          the response logic
+├── domain/                            WorkflowRun, StageExecution
+├── repository/
+└── workflow/
+    ├── WorkflowEngine.java            advances runs on approval
+    ├── WorkflowStage.java             what a stage must implement
+    ├── StageContext.java              what a stage receives
+    ├── StageResult.java               what a stage returns
+    ├── WorkflowDefinition.java        an ordered sequence of stages
+    ├── WorkflowCatalog.java           the registered workflows
+    ├── WorkflowPayload.java           the key contract between stages
+    ├── WorkflowRegistry.java
+    ├── ApprovalClassifier.java        the seam for yes/no judgement
+    ├── KeywordApprovalClassifier.java
+    └── stage/
+        ├── ConfirmRequestStage.java   stage 0
+        ├── ResearchStage.java         stage 1
+        └── TemplateStage.java         stage 2
 ```
+
+**Note:** `RequestController` and `ResponseService` are the earlier echo endpoint
+(`POST /api/v1/request`). It is now superseded by the workflow API and kept only
+because it was not asked to be removed. Say the word and it goes.
+
+---
+
+## Adding a stage
+
+1. Implement `WorkflowStage` in `workflow/stage/`, return a `StageResult`.
+2. Add it to the list in `WorkflowCatalog`.
+
+Nothing else needs to change. The engine handles approval, history, retries and
+passing data forward.
 
 ---
 
 ## Build
 
 ```bash
-JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn clean verify
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home mvn verify
 ```
 
-The `JAVA_HOME` override matters: `java` on PATH is 17, but Maven picks up JDK 25
-by default. Spring Boot 3.5 targets 17.
+Two things about this machine:
 
-Run the built jar:
+- The `JAVA_HOME` override matters — `java` on PATH is 17, but Maven picks up JDK 25.
+- Do **not** use `mvn clean`. macOS tags build output with a `com.apple.provenance`
+  attribute that blocks the Spring Boot repackage rename. Instead:
 
-```bash
-java -jar target/sage-teaching-assistant-0.0.1-SNAPSHOT.jar
-```
+  ```bash
+  rm -rf target && xattr -rc . && mvn verify
+  ```

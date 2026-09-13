@@ -1,1 +1,0 @@
-Migration scripts go here. Flyway applies V1__*.sql, V2__*.sql and so on in order.
