@@ -84,6 +84,15 @@ public class WorkflowEngine {
         }
 
         log.info("Run {} re-running stage '{}' on user feedback", runId, stage.key());
+
+        // The attempt being replaced is no longer the stage's answer, so mark it
+        // superseded rather than leaving it looking like the live output.
+        executionRepository.findFirstByRunIdAndStageKeyOrderByAttemptDesc(runId, stage.key())
+                .ifPresent(previous -> {
+                    previous.markRevised();
+                    executionRepository.save(previous);
+                });
+
         return runStage(run, definition, index, message, message);
     }
 
