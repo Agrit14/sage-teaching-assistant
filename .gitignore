@@ -7,19 +7,20 @@
 *.swp
 *.swo
 
-# Environment
+# Secrets — never commit the bot token
 .env
 .env.local
 *.local
+src/main/resources/application-local.yml
 
-# Dependencies
+# Java build output
+target/
+*.class
+*.log
+
+# Dependencies (kept for when a frontend or scripts land here)
 node_modules/
 venv/
 .venv/
 __pycache__/
 *.pyc
-
-# Build output
-dist/
-build/
-*.log
