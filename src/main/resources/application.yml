@@ -12,7 +12,6 @@ spring:
       pool-name: sage-pool
 
   jpa:
-    # Flyway owns the schema; Hibernate only checks that entities match it.
     hibernate:
       ddl-auto: validate
     open-in-view: false
@@ -30,29 +29,11 @@ spring:
 
 server:
   # 8081 rather than the usual 8080: something else on this machine already
-  # holds 8080. Override with SAGE_PORT if you free it up.
+  # holds 8080. Override with SAGE_PORT.
   port: ${SAGE_PORT:8081}
-
-sage:
-  telegram:
-    bot:
-      # Get this from @BotFather. Leave blank to run the API without the bot.
-      token: ${TELEGRAM_BOT_TOKEN:}
-      username: ${TELEGRAM_BOT_USERNAME:}
-      # Set to false to disable the bot even when a token is present.
-      enabled: ${TELEGRAM_BOT_ENABLED:true}
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
-  endpoint:
-    health:
-      show-details: when-authorized
-
-logging:
-  level:
-    com.sage.teachingassistant: INFO
-    # Quiet down the very chatty Telegram polling client
-    org.telegram.telegrambots: INFO
