@@ -161,9 +161,8 @@ together. Add `V2__*.sql` rather than editing `V1`.
 ```
 src/main/java/com/sage/teachingassistant/
 ├── api/
-│   ├── WorkflowController.java        the three endpoints
+│   ├── WorkflowController.java        the four endpoints
 │   ├── WorkflowExceptionHandler.java  workflow errors -> HTTP status
-│   ├── RequestController.java         (see note below)
 │   └── dto/
 ├── domain/                            WorkflowRun, StageExecution
 ├── repository/
@@ -183,10 +182,6 @@ src/main/java/com/sage/teachingassistant/
         ├── ResearchStage.java         stage 1
         └── TemplateStage.java         stage 2
 ```
-
-**Note:** `RequestController` and `ResponseService` are the earlier echo endpoint
-(`POST /api/v1/request`). It is now superseded by the workflow API and kept only
-because it was not asked to be removed. Say the word and it goes.
 
 ---
 
