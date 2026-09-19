@@ -63,6 +63,17 @@ class DocumentGenerationTest {
         assertThat(convertedPdf).isNotEmpty();
         String convertedHeader = new String(convertedPdf, 0, 5);
         assertThat(convertedHeader).isEqualTo("%PDF-");
+
+        // Test multi-page PDF export
+        StringBuilder longBody = new StringBuilder();
+        for (int i = 1; i <= 60; i++) {
+            longBody.append(i).append(". Question number ").append(i).append(": Explain the principle with a detailed diagram and proof.\n\n");
+        }
+        byte[] multiPagePdf = pdfService.exportPdf("EXAMINATION PAPER", "Class 10 Board Exam", longBody.toString());
+        com.lowagie.text.pdf.PdfReader reader = new com.lowagie.text.pdf.PdfReader(multiPagePdf);
+        int numPages = reader.getNumberOfPages();
+        assertThat(numPages).isGreaterThan(1);
+        reader.close();
     }
 
     @Test

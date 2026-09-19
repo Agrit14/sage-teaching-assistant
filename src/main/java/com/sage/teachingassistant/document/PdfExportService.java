@@ -10,6 +10,7 @@ import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.Rectangle;
+import com.lowagie.text.pdf.PdfContentByte;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfPageEventHelper;
@@ -32,7 +33,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * Generates formatted, publication-ready A4 PDFs for Alpha Tutor documents.
+ * Generates formatted, publication-ready A4 PDFs for Alpha Tutor documents
+ * with consistent branding header and footer on EVERY page.
  */
 @Service
 public class PdfExportService {
@@ -50,38 +52,44 @@ public class PdfExportService {
     private static final Font FONT_BOLD_BODY = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, COLOR_TEXT);
     private static final Font FONT_SMALL = FontFactory.getFont(FontFactory.HELVETICA, 8.5f, COLOR_MUTED);
 
+    // Margins: Left 36, Right 36, Top 105 (for header banner on every page), Bottom 62 (for footer on every page)
+    private static final float MARGIN_LEFT = 36f;
+    private static final float MARGIN_RIGHT = 36f;
+    private static final float MARGIN_TOP = 105f;
+    private static final float MARGIN_BOTTOM = 62f;
+
     /**
      * Renders a PDF directly from text content and document metadata.
      */
     public byte[] exportPdf(String documentType, String requestInfo, String contentBody) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Document document = new Document(PageSize.A4, 40, 40, 40, 45);
+            Document document = new Document(PageSize.A4, MARGIN_LEFT, MARGIN_RIGHT, MARGIN_TOP, MARGIN_BOTTOM);
             PdfWriter writer = PdfWriter.getInstance(document, out);
-            writer.setPageEvent(new HeaderFooterPageEvent());
+
+            // Set page event to draw Alpha Tutor header & footer on EVERY page
+            byte[] headerImgBytes = loadHeaderImageBytes();
+            writer.setPageEvent(new AlphaTutorHeaderFooterEvent(headerImgBytes));
 
             document.open();
 
-            // 1. Header Banner / Logo
-            addHeaderImage(document);
-
-            // 2. Document Title & Subtitle
+            // Document Title & Subtitle (placed below header)
             Paragraph title = new Paragraph(documentType.toUpperCase(), FONT_HEADER_TITLE);
             title.setAlignment(Element.ALIGN_CENTER);
-            title.setSpacingBefore(10);
+            title.setSpacingBefore(6);
             title.setSpacingAfter(4);
             document.add(title);
 
             Paragraph subtitle = new Paragraph(requestInfo, FONT_SUBTITLE);
             subtitle.setAlignment(Element.ALIGN_CENTER);
-            subtitle.setSpacingAfter(14);
+            subtitle.setSpacingAfter(12);
             document.add(subtitle);
 
-            // 3. Student Details Block (for worksheets and tests)
+            // Student Details Block (for worksheets and tests)
             if (!"REVISION NOTES".equalsIgnoreCase(documentType)) {
                 addStudentBox(document);
             }
 
-            // 4. Formatted Body Content
+            // Formatted Body Content
             addBodyContent(document, contentBody);
 
             document.close();
@@ -93,21 +101,22 @@ public class PdfExportService {
     }
 
     /**
-     * Converts an existing Word .docx (e.g. uploaded by user in pdf-print) to PDF.
+     * Converts an existing Word .docx (e.g. uploaded by user in pdf-print) to PDF
+     * ensuring Alpha Tutor header and footer appear on EVERY page.
      */
     public byte[] convertDocxToPdf(byte[] docxBytes) {
         try (ByteArrayInputStream in = new ByteArrayInputStream(docxBytes);
              XWPFDocument docx = new XWPFDocument(in);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            Document document = new Document(PageSize.A4, 40, 40, 40, 45);
+            Document document = new Document(PageSize.A4, MARGIN_LEFT, MARGIN_RIGHT, MARGIN_TOP, MARGIN_BOTTOM);
             PdfWriter writer = PdfWriter.getInstance(document, out);
-            writer.setPageEvent(new HeaderFooterPageEvent());
+
+            // Set page event to draw Alpha Tutor header & footer on EVERY page
+            byte[] headerImgBytes = loadHeaderImageBytes();
+            writer.setPageEvent(new AlphaTutorHeaderFooterEvent(headerImgBytes));
 
             document.open();
-
-            // Add Header Banner
-            addHeaderImage(document);
 
             // Render tables from docx
             for (XWPFTable table : docx.getTables()) {
@@ -133,8 +142,8 @@ public class PdfExportService {
                     continue;
                 }
 
-                // Skip header duplicates if template was already embedded
-                if (text.contains("VIDUSHI KHANNA") || text.contains("9266973332")) {
+                // Skip header duplicates if template was already embedded in text
+                if (text.contains("VIDUSHI KHANNA") || text.contains("9266973332") || text.contains("Katwaria Sarai")) {
                     continue;
                 }
 
@@ -164,32 +173,6 @@ public class PdfExportService {
         }
     }
 
-    private void addHeaderImage(Document document) {
-        byte[] imgBytes = loadHeaderImageBytes();
-        if (imgBytes != null && imgBytes.length > 0) {
-            try {
-                Image img = Image.getInstance(imgBytes);
-                float pageWidth = document.getPageSize().getWidth() - document.leftMargin() - document.rightMargin();
-                img.scaleToFit(pageWidth, 120);
-                img.setAlignment(Element.ALIGN_CENTER);
-                img.setSpacingAfter(8);
-                document.add(img);
-                return;
-            } catch (Exception e) {
-                log.warn("Could not insert header image: {}", e.getMessage());
-            }
-        }
-
-        // Fallback textual header if image is not loadable
-        Paragraph banner = new Paragraph("ALPHA TUTOR", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18, COLOR_PRIMARY));
-        banner.setAlignment(Element.ALIGN_CENTER);
-        document.add(banner);
-        Paragraph tagline = new Paragraph("CLASSES 6th–10th | 11th–12th MATHS • VIDUSHI KHANNA\nPhone: 9266973332 / 9266987111", FONT_SMALL);
-        tagline.setAlignment(Element.ALIGN_CENTER);
-        tagline.setSpacingAfter(10);
-        document.add(tagline);
-    }
-
     private byte[] loadHeaderImageBytes() {
         try (InputStream is = getClass().getResourceAsStream("/template/alpha_tutor_header.jpeg")) {
             if (is != null) {
@@ -211,8 +194,8 @@ public class PdfExportService {
     private void addStudentBox(Document document) throws Exception {
         PdfPTable table = new PdfPTable(3);
         table.setWidthPercentage(100);
-        table.setSpacingBefore(6);
-        table.setSpacingAfter(12);
+        table.setSpacingBefore(4);
+        table.setSpacingAfter(10);
 
         table.addCell(createCell("Student Name: _____________________"));
         table.addCell(createCell("Roll No: ____________"));
@@ -284,31 +267,107 @@ public class PdfExportService {
     }
 
     /**
-     * Adds page numbers and subtle bottom branding on each page.
+     * Alpha Tutor Page Event: Renders the Alpha Tutor header banner at the top
+     * and the contact/address footer with page numbering at the bottom of EVERY PAGE.
      */
-    private static class HeaderFooterPageEvent extends PdfPageEventHelper {
+    private static class AlphaTutorHeaderFooterEvent extends PdfPageEventHelper {
+
+        private final byte[] headerImageBytes;
+
+        public AlphaTutorHeaderFooterEvent(byte[] headerImageBytes) {
+            this.headerImageBytes = headerImageBytes;
+        }
+
         @Override
         public void onEndPage(PdfWriter writer, Document document) {
-            Rectangle rect = document.getPageSize();
-            Font footerFont = FontFactory.getFont(FontFactory.HELVETICA, 8, COLOR_MUTED);
+            PdfContentByte cb = writer.getDirectContent();
+            float pageWidth = document.getPageSize().getWidth();
+            float pageHeight = document.getPageSize().getHeight();
+            float contentWidth = pageWidth - MARGIN_LEFT - MARGIN_RIGHT;
 
-            // Top subtle rule
-            // Bottom footer
-            PdfPTable footer = new PdfPTable(2);
-            footer.setTotalWidth(rect.getWidth() - 80);
-            footer.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+            // =================================================================
+            // 1. HEADER ON EVERY PAGE
+            // =================================================================
+            boolean imageRendered = false;
+            if (headerImageBytes != null && headerImageBytes.length > 0) {
+                try {
+                    Image headerImg = Image.getInstance(headerImageBytes);
+                    // Aspect ratio 3574 / 506 = ~7.06
+                    float imgHeight = contentWidth / (3574f / 506f);
+                    headerImg.scaleAbsolute(contentWidth, imgHeight);
+                    // Place 14pt from top edge of page
+                    headerImg.setAbsolutePosition(MARGIN_LEFT, pageHeight - 14f - imgHeight);
+                    cb.addImage(headerImg);
+                    imageRendered = true;
+                } catch (Exception e) {
+                    log.warn("Could not render header image on page {}: {}", writer.getPageNumber(), e.getMessage());
+                }
+            }
 
-            PdfPCell leftCell = new PdfPCell(new Phrase("Alpha Tutor — Academic Excellence", footerFont));
-            leftCell.setBorder(Rectangle.NO_BORDER);
-            leftCell.setHorizontalAlignment(Element.ALIGN_LEFT);
-            footer.addCell(leftCell);
+            if (!imageRendered) {
+                // Fallback header banner if image file is not present
+                cb.setColorFill(COLOR_PRIMARY);
+                Font fbTitle = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, COLOR_PRIMARY);
+                Font fbSub = FontFactory.getFont(FontFactory.HELVETICA, 8, COLOR_MUTED);
 
-            PdfPCell rightCell = new PdfPCell(new Phrase("Page " + writer.getPageNumber(), footerFont));
-            rightCell.setBorder(Rectangle.NO_BORDER);
-            rightCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            footer.addCell(rightCell);
+                PdfPTable fallbackTable = new PdfPTable(1);
+                fallbackTable.setTotalWidth(contentWidth);
+                PdfPCell titleCell = new PdfPCell(new Phrase("ALPHA TUTOR", fbTitle));
+                titleCell.setBorder(Rectangle.NO_BORDER);
+                titleCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+                fallbackTable.addCell(titleCell);
 
-            footer.writeSelectedRows(0, -1, 40, 30, writer.getDirectContent());
+                PdfPCell subCell = new PdfPCell(new Phrase("CLASSES 6th–10th | 11th–12th MATHS • VIDUSHI KHANNA", fbSub));
+                subCell.setBorder(Rectangle.NO_BORDER);
+                subCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+                fallbackTable.addCell(subCell);
+
+                fallbackTable.writeSelectedRows(0, -1, MARGIN_LEFT, pageHeight - 16f, cb);
+            }
+
+            // =================================================================
+            // 2. FOOTER ON EVERY PAGE
+            // =================================================================
+            // Divider rule above footer
+            cb.setColorStroke(new Color(27, 54, 93)); // Alpha Tutor Navy
+            cb.setLineWidth(0.75f);
+            cb.moveTo(MARGIN_LEFT, 50f);
+            cb.lineTo(pageWidth - MARGIN_RIGHT, 50f);
+            cb.stroke();
+
+            // 2-column footer table: Contact info on left, Page number on right
+            try {
+                PdfPTable footerTable = new PdfPTable(new float[]{82f, 18f});
+                footerTable.setTotalWidth(contentWidth);
+                footerTable.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+
+                Font footerBold = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7.5f, COLOR_PRIMARY);
+                Font footerText = FontFactory.getFont(FontFactory.HELVETICA, 7.0f, new Color(90, 90, 90));
+                Font pageFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8.0f, COLOR_PRIMARY);
+
+                Paragraph contactPara = new Paragraph();
+                contactPara.setLeading(9f);
+                contactPara.add(new Chunk("CLASSES 6th–10th | 11th–12th MATHS • VIDUSHI KHANNA\n", footerBold));
+                contactPara.add(new Chunk("9266973332 / 9266987111 • B-54, LIG Flats, Phase-1, Katwaria Sarai, Near Food Point", footerText));
+
+                PdfPCell leftCell = new PdfPCell(contactPara);
+                leftCell.setBorder(Rectangle.NO_BORDER);
+                leftCell.setPaddingTop(3);
+                leftCell.setPaddingLeft(0);
+                footerTable.addCell(leftCell);
+
+                PdfPCell rightCell = new PdfPCell(new Phrase("Page " + writer.getPageNumber(), pageFont));
+                rightCell.setBorder(Rectangle.NO_BORDER);
+                rightCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+                rightCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+                rightCell.setPaddingTop(3);
+                rightCell.setPaddingRight(0);
+                footerTable.addCell(rightCell);
+
+                footerTable.writeSelectedRows(0, -1, MARGIN_LEFT, 47f, cb);
+            } catch (Exception e) {
+                log.warn("Could not render footer table on page {}: {}", writer.getPageNumber(), e.getMessage());
+            }
         }
     }
 }
