@@ -54,6 +54,19 @@ Health check: `curl http://localhost:8081/actuator/health`
 
 ---
 
+## Workflows
+
+Sage has 4 registered workflows tailored for educational teaching assistance:
+
+| Workflow Key | Name | Input | Stages |
+|---|---|---|---|
+| `worksheet-generation` | Worksheet Generator (Alpha Tutor) | Class + Topic | 1. Research & Outline $\rightarrow$ 2. Word Draft $\rightarrow$ 3. PDF Export |
+| `test-generation` | Test Paper Generator (Alpha Tutor) | Class + Topic + Marks | 1. Blueprint $\rightarrow$ 2. Examination Word Draft $\rightarrow$ 3. PDF Export |
+| `notes-generation` | Revision Notes Generator (Alpha Tutor) | Class + Topic | 1. Concept Scope $\rightarrow$ 2. Notes Word Draft $\rightarrow$ 3. PDF Export |
+| `pdf-print` | Direct PDF Print (Alpha Tutor) | Uploaded `.docx` | 1. Format into Template & Export PDF |
+
+---
+
 ## API
 
 Base path `/api/v1/workflows`.
@@ -67,27 +80,12 @@ Lists the workflows available to start, with their stages in order.
 Starts a run and executes stage 0.
 
 ```json
-{ "workflowKey": "educational-notes", "message": "notes and a worksheet on photosynthesis for class 8" }
-```
-
-```json
-{
-  "runId": "5766563a-2763-4cb4-91f9-79d73f0c8155",
-  "workflowKey": "educational-notes",
-  "status": "AWAITING_APPROVAL",
-  "stageIndex": 0,
-  "stageCount": 3,
-  "stageKey": "confirm",
-  "stageName": "Confirm the request",
-  "message": "Before I build anything, let me check I've understood you...",
-  "output": { "confirm.confirmedRequest": "notes and a worksheet on photosynthesis for class 8" },
-  "completed": false
-}
+{ "workflowKey": "worksheet-generation", "message": "Class 9 Physics - Laws of Motion" }
 ```
 
 ### `POST /api/v1/workflows/runs/{runId}/messages`
 
-The one call that moves a run. What happens depends on the message:
+Moves the run forward.
 
 | Message | Effect |
 |---|---|
@@ -95,23 +93,43 @@ The one call that moves a run. What happens depends on the message:
 | `"yes"` on the last stage | Completes the run |
 | anything else | Treats it as feedback, re-runs the current stage |
 
-```json
-{ "message": "yes" }
-```
-
 ### `GET /api/v1/workflows/runs/{runId}`
 
-The run's position plus its full execution history, including every revision.
+Returns the run's status, latest stage output, and complete revision history.
+
+### `GET /api/v1/workflows/runs/{runId}/files/docx`
+
+Downloads the generated Alpha Tutor Word document (`.docx`).
+
+### `GET /api/v1/workflows/runs/{runId}/files/pdf`
+
+Downloads or views the finalized Alpha Tutor PDF document (`.pdf`).
+
+### `POST /api/v1/workflows/runs/{runId}/upload`
+
+Uploads an external `.docx` file for the `pdf-print` workflow (multipart form-data with part `file`).
 
 ### Errors
 
 | Status | When |
 |---|---|
-| `400` | Blank `message`, or missing `workflowKey` |
-| `404` | Unknown workflow key, or unknown run id |
+| `400` | Blank `message`, missing `workflowKey`, or empty upload |
+| `404` | Unknown workflow key, unknown run id, or file not found |
 | `409` | Message sent to a run that has already finished |
 
 ---
+
+## Environment Variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GEMINI_API_KEY` | *(empty)* | Google Gemini API key (with Google Search grounding). Uses fallback if not set. |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model name. |
+| `SAGE_STORAGE_PATH` | `./data/files` | Directory path where generated docx and pdf files are saved. |
+| `SAGE_PORT` | `8081` | Server listening port. |
+| `SAGE_DB_URL` | `jdbc:postgresql://localhost:5433/sage` | PostgreSQL JDBC connection URL. |
+| `SAGE_DB_USER` | `sage` | PostgreSQL user. |
+| `SAGE_DB_PASSWORD` | `sage` | PostgreSQL password. |
 
 ## Design notes
 

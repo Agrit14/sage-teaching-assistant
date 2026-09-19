@@ -17,5 +17,26 @@ services:
       timeout: 3s
       retries: 10
 
+  app:
+    build: .
+    container_name: sage-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SAGE_DB_URL: jdbc:postgresql://postgres:5432/sage
+      SAGE_DB_USER: sage
+      SAGE_DB_PASSWORD: sage
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      SAGE_STORAGE_PATH: /app/data/files
+    volumes:
+      - sage-files:/app/data/files
+
 volumes:
   sage-pgdata:
+  sage-files:
+

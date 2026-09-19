@@ -40,18 +40,18 @@ public class StageExecution {
     @Column(name = "status", length = 32, nullable = false)
     private ExecutionStatus status;
 
-    @Column(name = "user_message", length = 4096)
+    @Column(name = "user_message", columnDefinition = "TEXT")
     private String userMessage;
 
     /** What the user asked to change, when this execution was a revision. */
-    @Column(name = "feedback", length = 4096)
+    @Column(name = "feedback", columnDefinition = "TEXT")
     private String feedback;
 
-    @Column(name = "result_message", length = 4096)
+    @Column(name = "result_message", columnDefinition = "TEXT")
     private String resultMessage;
 
     /** JSON the stage produced, handed on to the next stage. */
-    @Column(name = "output_payload", length = 8192)
+    @Column(name = "output_payload", columnDefinition = "TEXT")
     private String outputPayload;
 
     @Column(name = "created_at", nullable = false)

@@ -24,3 +24,8 @@ venv/
 .venv/
 __pycache__/
 *.pyc
+
+# Local runtime storage
+data/
+.workbuddy-ai/
+
