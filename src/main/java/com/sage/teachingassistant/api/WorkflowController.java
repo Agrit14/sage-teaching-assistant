@@ -129,4 +129,29 @@ public class WorkflowController {
         // Re-execute current stage with notice that file was uploaded
         return RunResponse.from(engine.handleMessage(runId, "File uploaded: " + file.getOriginalFilename()));
     }
+
+    /**
+     * Starts a new run and uploads the Word document in a single step (ideal for 1-click PDF Print on Android).
+     */
+    @PostMapping(value = "/runs/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public RunResponse startWithFile(
+            @RequestParam(value = "workflowKey", defaultValue = "pdf-print") String workflowKey,
+            @RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File cannot be empty");
+        }
+
+        // 1. Start run
+        RunResponse run = RunResponse.from(engine.start(workflowKey, "Direct upload: " + file.getOriginalFilename()));
+
+        // 2. Save uploaded file for this run
+        try {
+            storageService.saveDocx(run.runId(), "uploaded", file.getBytes());
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save uploaded file: " + e.getMessage());
+        }
+
+        // 3. Convert into Alpha Tutor PDF template and return
+        return RunResponse.from(engine.handleMessage(run.runId(), "Process uploaded file"));
+    }
 }

@@ -113,27 +113,25 @@ The backend saves both the intermediate Word document (.docx) and the final PDF 
 
 ### STEP 4: PDF Print Flow (Direct Word Document Upload)
 
-When the user selects the **PDF Print** workflow:
+When the user selects the **PDF Print** workflow, you have two options:
 
+#### Option 1: 1-Click Direct Upload & Convert (Recommended)
+User picks a `.docx` file from their phone and you upload it in a single call:
+- **Endpoint**: `POST /api/v1/workflows/runs/upload`
+- **Headers**: `Content-Type: multipart/form-data`
+- **Form Fields**:
+  - `file`: the `.docx` file
+  - `workflowKey`: `"pdf-print"` (optional, defaults to `"pdf-print"`)
+- **Response**: Returns the `RunResponse` immediately containing the PDF download link:
+  `GET /api/v1/workflows/runs/{runId}/files/pdf`
+
+#### Option 2: 2-Step Flow
 1. **Start the run**:
-   `POST /api/v1/workflows/runs` with:
-   ```json
-   {
-     "workflowKey": "pdf-print",
-     "message": "Direct print request"
-   }
-   ```
-   Save the returned `runId`.
-
-2. **Upload the user's Word document**:
-   - **Endpoint**: `POST /api/v1/workflows/runs/{runId}/upload`
-   - **Headers**: `Content-Type: multipart/form-data`
-   - **Form Field**: `file` (the `.docx` file from device storage)
-
-   Sage will automatically apply the Alpha Tutor template, header, and margins.
-
-3. **Download the formatted PDF**:
-   - **Endpoint**: `GET /api/v1/workflows/runs/{runId}/files/pdf`
+   `POST /api/v1/workflows/runs` with `{"workflowKey": "pdf-print", "message": "Direct print"}`
+2. **Upload the Word document**:
+   `POST /api/v1/workflows/runs/{runId}/upload` (multipart with part `file`)
+3. **Download formatted PDF**:
+   `GET /api/v1/workflows/runs/{runId}/files/pdf`
 
 ---
 
@@ -214,11 +212,18 @@ interface SageApiService {
         @Path("runId") runId: String
     ): Response<ResponseBody>
 
-    // 6. Upload Word file for PDF Print
+    // 6. Upload Word file for PDF Print (2-step flow)
     @Multipart
     @POST("/api/v1/workflows/runs/{runId}/upload")
     suspend fun uploadDocx(
         @Path("runId") runId: String,
+        @Part file: MultipartBody.Part
+    ): Response<RunResponse>
+
+    // 7. 1-Click Direct Upload Word doc & Convert to PDF (1-step flow)
+    @Multipart
+    @POST("/api/v1/workflows/runs/upload")
+    suspend fun uploadDocxDirect(
         @Part file: MultipartBody.Part
     ): Response<RunResponse>
 }
