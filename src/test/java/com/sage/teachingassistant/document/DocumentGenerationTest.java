@@ -64,7 +64,7 @@ class DocumentGenerationTest {
         String convertedHeader = new String(convertedPdf, 0, 5);
         assertThat(convertedHeader).isEqualTo("%PDF-");
 
-        // Test multi-page PDF export
+        // Test multi-page PDF export: verify header golden line and footer text on every page
         StringBuilder longBody = new StringBuilder();
         for (int i = 1; i <= 60; i++) {
             longBody.append(i).append(". Question number ").append(i).append(": Explain the principle with a detailed diagram and proof.\n\n");
@@ -73,6 +73,12 @@ class DocumentGenerationTest {
         com.lowagie.text.pdf.PdfReader reader = new com.lowagie.text.pdf.PdfReader(multiPagePdf);
         int numPages = reader.getNumberOfPages();
         assertThat(numPages).isGreaterThan(1);
+        for (int p = 1; p <= numPages; p++) {
+            String pageContent = new String(reader.getPageContent(p));
+            assertThat(pageContent).contains("VIDUSHI KHANNA");
+            assertThat(pageContent).contains("9266973332");
+            assertThat(pageContent).contains("Katwaria Sarai");
+        }
         reader.close();
     }
 

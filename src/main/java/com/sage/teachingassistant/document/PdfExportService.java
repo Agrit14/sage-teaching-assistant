@@ -10,6 +10,7 @@ import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.Rectangle;
+import com.lowagie.text.pdf.ColumnText;
 import com.lowagie.text.pdf.PdfContentByte;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
@@ -41,9 +42,12 @@ public class PdfExportService {
 
     private static final Logger log = LoggerFactory.getLogger(PdfExportService.class);
 
-    private static final Color COLOR_PRIMARY = new Color(27, 54, 93);    // Navy #1B365D
-    private static final Color COLOR_TEXT = new Color(50, 50, 50);       // Dark gray #323232
-    private static final Color COLOR_MUTED = new Color(110, 110, 110);   // Gray
+    private static final Color COLOR_PRIMARY = new Color(27, 54, 93);         // Navy #1B365D
+    private static final Color COLOR_TEXT = new Color(50, 50, 50);            // Dark gray #323232
+    private static final Color COLOR_MUTED = new Color(110, 110, 110);        // Gray
+    private static final Color COLOR_GOLD = new Color(244, 179, 0);            // Golden accent line #F4B300
+    private static final Color COLOR_FOOTER_GREEN = new Color(7, 93, 42);      // Footer Green #075D2A
+    private static final Color COLOR_FOOTER_RED = new Color(214, 24, 31);      // Footer Red #D6181F
 
     private static final Font FONT_HEADER_TITLE = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 15, COLOR_PRIMARY);
     private static final Font FONT_SUBTITLE = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, COLOR_TEXT);
@@ -52,11 +56,11 @@ public class PdfExportService {
     private static final Font FONT_BOLD_BODY = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, COLOR_TEXT);
     private static final Font FONT_SMALL = FontFactory.getFont(FontFactory.HELVETICA, 8.5f, COLOR_MUTED);
 
-    // Margins: Left 36, Right 36, Top 105 (for header banner on every page), Bottom 62 (for footer on every page)
+    // Margins: Left 36, Right 36, Top 105 (for header banner on every page), Bottom 65 (for footer on every page)
     private static final float MARGIN_LEFT = 36f;
     private static final float MARGIN_RIGHT = 36f;
     private static final float MARGIN_TOP = 105f;
-    private static final float MARGIN_BOTTOM = 62f;
+    private static final float MARGIN_BOTTOM = 65f;
 
     /**
      * Renders a PDF directly from text content and document metadata.
@@ -142,8 +146,15 @@ public class PdfExportService {
                     continue;
                 }
 
-                // Skip header duplicates if template was already embedded in text
-                if (text.contains("VIDUSHI KHANNA") || text.contains("9266973332") || text.contains("Katwaria Sarai")) {
+                // Skip header duplicates and footer duplicates if template was already embedded in text
+                String upper = text.toUpperCase();
+                if (upper.contains("VIDUSHI KHANNA")
+                        || upper.contains("9266973332")
+                        || upper.contains("9266987111")
+                        || upper.contains("KATWARIA SARAI")
+                        || upper.contains("FOOD POINT")
+                        || upper.contains("CLASSES 6TH")
+                        || upper.equals("ALPHA TUTOR")) {
                     continue;
                 }
 
@@ -267,8 +278,9 @@ public class PdfExportService {
     }
 
     /**
-     * Alpha Tutor Page Event: Renders the Alpha Tutor header banner at the top
-     * and the contact/address footer with page numbering at the bottom of EVERY PAGE.
+     * Alpha Tutor Page Event: Renders the Alpha Tutor header banner with golden accent line
+     * at the top, and the authentic green/red contact footer with golden separator line
+     * at the bottom of EVERY PAGE.
      */
     private static class AlphaTutorHeaderFooterEvent extends PdfPageEventHelper {
 
@@ -289,14 +301,16 @@ public class PdfExportService {
             // 1. HEADER ON EVERY PAGE
             // =================================================================
             boolean imageRendered = false;
+            float headerBottomY = pageHeight - 14f;
+
             if (headerImageBytes != null && headerImageBytes.length > 0) {
                 try {
                     Image headerImg = Image.getInstance(headerImageBytes);
                     // Aspect ratio 3574 / 506 = ~7.06
                     float imgHeight = contentWidth / (3574f / 506f);
                     headerImg.scaleAbsolute(contentWidth, imgHeight);
-                    // Place 14pt from top edge of page
-                    headerImg.setAbsolutePosition(MARGIN_LEFT, pageHeight - 14f - imgHeight);
+                    headerBottomY = pageHeight - 14f - imgHeight;
+                    headerImg.setAbsolutePosition(MARGIN_LEFT, headerBottomY);
                     cb.addImage(headerImg);
                     imageRendered = true;
                 } catch (Exception e) {
@@ -323,48 +337,65 @@ public class PdfExportService {
                 fallbackTable.addCell(subCell);
 
                 fallbackTable.writeSelectedRows(0, -1, MARGIN_LEFT, pageHeight - 16f, cb);
+                headerBottomY = pageHeight - 16f - 24f;
             }
+
+            // Golden accent line below Alpha Tutor header (matching template #F4B300, 1.6pt)
+            float headerLineY = headerBottomY - 4f;
+            cb.setColorStroke(COLOR_GOLD);
+            cb.setLineWidth(1.6f);
+            cb.moveTo(MARGIN_LEFT, headerLineY);
+            cb.lineTo(pageWidth - MARGIN_RIGHT, headerLineY);
+            cb.stroke();
 
             // =================================================================
             // 2. FOOTER ON EVERY PAGE
             // =================================================================
-            // Divider rule above footer
-            cb.setColorStroke(new Color(27, 54, 93)); // Alpha Tutor Navy
-            cb.setLineWidth(0.75f);
-            cb.moveTo(MARGIN_LEFT, 50f);
-            cb.lineTo(pageWidth - MARGIN_RIGHT, 50f);
+            // Golden divider rule above footer (matching template #F4B300, 1.6pt)
+            float footerLineY = 54f;
+            cb.setColorStroke(COLOR_GOLD);
+            cb.setLineWidth(1.6f);
+            cb.moveTo(MARGIN_LEFT, footerLineY);
+            cb.lineTo(pageWidth - MARGIN_RIGHT, footerLineY);
             cb.stroke();
 
-            // 2-column footer table: Contact info on left, Page number on right
+            // Authentic Alpha Tutor footer: centered, matching template fonts and colors
             try {
-                PdfPTable footerTable = new PdfPTable(new float[]{82f, 18f});
+                PdfPTable footerTable = new PdfPTable(1);
                 footerTable.setTotalWidth(contentWidth);
                 footerTable.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+                footerTable.getDefaultCell().setHorizontalAlignment(Element.ALIGN_CENTER);
 
-                Font footerBold = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7.5f, COLOR_PRIMARY);
-                Font footerText = FontFactory.getFont(FontFactory.HELVETICA, 7.0f, new Color(90, 90, 90));
-                Font pageFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8.0f, COLOR_PRIMARY);
+                // Line 1: Classes & Teacher in Forest Green (#075D2A), Bold, 8pt, Centered
+                Font greenFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8.0f, COLOR_FOOTER_GREEN);
+                Paragraph line1Para = new Paragraph("CLASSES 6th–10th | 11th–12th MATHS • VIDUSHI KHANNA", greenFont);
+                line1Para.setAlignment(Element.ALIGN_CENTER);
+                line1Para.setLeading(10.5f);
+                PdfPCell cell1 = new PdfPCell(line1Para);
+                cell1.setBorder(Rectangle.NO_BORDER);
+                cell1.setHorizontalAlignment(Element.ALIGN_CENTER);
+                cell1.setPaddingTop(3f);
+                cell1.setPaddingBottom(1f);
+                footerTable.addCell(cell1);
 
-                Paragraph contactPara = new Paragraph();
-                contactPara.setLeading(9f);
-                contactPara.add(new Chunk("CLASSES 6th–10th | 11th–12th MATHS • VIDUSHI KHANNA\n", footerBold));
-                contactPara.add(new Chunk("9266973332 / 9266987111 • B-54, LIG Flats, Phase-1, Katwaria Sarai, Near Food Point", footerText));
+                // Line 2: Phone & Address in Crimson Red (#D6181F), Regular, 7.5pt, Centered
+                Font redFont = FontFactory.getFont(FontFactory.HELVETICA, 7.5f, COLOR_FOOTER_RED);
+                Paragraph line2Para = new Paragraph("9266973332 / 9266987111 • B-54, LIG Flats, Phase-1, Katwaria Sarai, Near Food Point", redFont);
+                line2Para.setAlignment(Element.ALIGN_CENTER);
+                line2Para.setLeading(10.0f);
+                PdfPCell cell2 = new PdfPCell(line2Para);
+                cell2.setBorder(Rectangle.NO_BORDER);
+                cell2.setHorizontalAlignment(Element.ALIGN_CENTER);
+                cell2.setPaddingTop(1f);
+                cell2.setPaddingBottom(0f);
+                footerTable.addCell(cell2);
 
-                PdfPCell leftCell = new PdfPCell(contactPara);
-                leftCell.setBorder(Rectangle.NO_BORDER);
-                leftCell.setPaddingTop(3);
-                leftCell.setPaddingLeft(0);
-                footerTable.addCell(leftCell);
+                footerTable.writeSelectedRows(0, -1, MARGIN_LEFT, footerLineY - 2f, cb);
 
-                PdfPCell rightCell = new PdfPCell(new Phrase("Page " + writer.getPageNumber(), pageFont));
-                rightCell.setBorder(Rectangle.NO_BORDER);
-                rightCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-                rightCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
-                rightCell.setPaddingTop(3);
-                rightCell.setPaddingRight(0);
-                footerTable.addCell(rightCell);
-
-                footerTable.writeSelectedRows(0, -1, MARGIN_LEFT, 47f, cb);
+                // Page number placed right-aligned in bottom margin
+                Font pageFont = FontFactory.getFont(FontFactory.HELVETICA, 7.0f, COLOR_MUTED);
+                Phrase pagePhrase = new Phrase("Page " + writer.getPageNumber(), pageFont);
+                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT, pagePhrase, pageWidth - MARGIN_RIGHT, 12f, 0);
             } catch (Exception e) {
                 log.warn("Could not render footer table on page {}: {}", writer.getPageNumber(), e.getMessage());
             }
