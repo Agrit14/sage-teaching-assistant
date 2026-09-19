@@ -55,11 +55,6 @@ public class DocxTemplateGenerator {
             // Add Title
             addDocumentTitle(doc, documentType.toUpperCase(), requestInfo);
 
-            // Add Student Information Table (for worksheets and tests)
-            if (!"REVISION NOTES".equalsIgnoreCase(documentType)) {
-                addStudentInfoTable(doc, requestInfo);
-            }
-
             // Append the formatted body content
             appendFormattedContent(doc, contentBody);
 
@@ -118,36 +113,6 @@ public class DocxTemplateGenerator {
         subRun.setColor(COLOR_DARK_GRAY);
     }
 
-    private void addStudentInfoTable(XWPFDocument doc, String requestInfo) {
-        XWPFTable table = doc.createTable(2, 3);
-        table.setWidthType(TableWidthType.PCT);
-        table.setWidth("100%");
-
-        fillCell(table.getRow(0).getCell(0), "Student Name: ____________________");
-        fillCell(table.getRow(0).getCell(1), "Roll No: ____________");
-        fillCell(table.getRow(0).getCell(2), "Date: ____________");
-
-        fillCell(table.getRow(1).getCell(0), "Class & Section: __________________");
-        fillCell(table.getRow(1).getCell(1), "Time: 45 Mins");
-        fillCell(table.getRow(1).getCell(2), "Max Marks: ________");
-
-        // Add spacing after table
-        XWPFParagraph afterTable = doc.createParagraph();
-        afterTable.setSpacingBefore(120);
-        afterTable.setSpacingAfter(80);
-    }
-
-    private void fillCell(XWPFTableCell cell, String text) {
-        XWPFParagraph p = cell.getParagraphs().get(0);
-        p.setSpacingBefore(40);
-        p.setSpacingAfter(40);
-        XWPFRun r = p.createRun();
-        r.setText(text);
-        r.setFontSize(10);
-        r.setFontFamily(FONT_FAMILY);
-        r.setColor(COLOR_DARK_GRAY);
-    }
-
     private void appendFormattedContent(XWPFDocument doc, String content) {
         if (content == null || content.isBlank()) {
             return;
@@ -162,8 +127,9 @@ public class DocxTemplateGenerator {
 
             XWPFParagraph para = doc.createParagraph();
 
-            // Heading 1 / Section
-            if (line.startsWith("# ") || line.toUpperCase().startsWith("SECTION") || line.toUpperCase().startsWith("PART ")) {
+            // Heading 1 / Section - Bold & Center-Aligned
+            if (line.startsWith("# ") || line.toUpperCase().startsWith("SECTION") || line.toUpperCase().startsWith("PART ") || line.toUpperCase().startsWith("CHAPTER")) {
+                para.setAlignment(ParagraphAlignment.CENTER);
                 para.setSpacingBefore(160);
                 para.setSpacingAfter(60);
                 XWPFRun run = para.createRun();
@@ -173,8 +139,9 @@ public class DocxTemplateGenerator {
                 run.setFontFamily(FONT_FAMILY);
                 run.setColor(COLOR_NAVY);
             }
-            // Heading 2 / Sub-section
+            // Heading 2 / Sub-section - Bold & Center-Aligned
             else if (line.startsWith("## ") || line.startsWith("### ")) {
+                para.setAlignment(ParagraphAlignment.CENTER);
                 para.setSpacingBefore(120);
                 para.setSpacingAfter(40);
                 XWPFRun run = para.createRun();

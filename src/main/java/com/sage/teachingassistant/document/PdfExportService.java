@@ -16,8 +16,12 @@ import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
+import org.apache.poi.xwpf.usermodel.BodyElementType;
+import org.apache.poi.xwpf.usermodel.IBodyElement;
+import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
@@ -32,6 +36,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Generates formatted, publication-ready A4 PDFs for Alpha Tutor documents
@@ -76,7 +82,7 @@ public class PdfExportService {
 
             document.open();
 
-            // Document Title & Subtitle (placed below header)
+            // Document Title & Subtitle (placed below header, bold and center-aligned)
             Paragraph title = new Paragraph(documentType.toUpperCase(), FONT_HEADER_TITLE);
             title.setAlignment(Element.ALIGN_CENTER);
             title.setSpacingBefore(6);
@@ -85,15 +91,10 @@ public class PdfExportService {
 
             Paragraph subtitle = new Paragraph(requestInfo, FONT_SUBTITLE);
             subtitle.setAlignment(Element.ALIGN_CENTER);
-            subtitle.setSpacingAfter(12);
+            subtitle.setSpacingAfter(14);
             document.add(subtitle);
 
-            // Student Details Block (for worksheets and tests)
-            if (!"REVISION NOTES".equalsIgnoreCase(documentType)) {
-                addStudentBox(document);
-            }
-
-            // Formatted Body Content
+            // Formatted Body Content (no dummy/unrelated starting table)
             addBodyContent(document, contentBody);
 
             document.close();
@@ -122,58 +123,13 @@ public class PdfExportService {
 
             document.open();
 
-            // Render tables from docx
-            for (XWPFTable table : docx.getTables()) {
-                PdfPTable pdfTable = new PdfPTable(table.getNumberOfRows() > 0 ? table.getRow(0).getTableCells().size() : 1);
-                pdfTable.setWidthPercentage(100);
-                pdfTable.setSpacingBefore(8);
-                pdfTable.setSpacingAfter(8);
-
-                for (XWPFTableRow row : table.getRows()) {
-                    for (XWPFTableCell cell : row.getTableCells()) {
-                        PdfPCell pdfCell = new PdfPCell(new Phrase(cell.getText(), FONT_BODY));
-                        pdfCell.setPadding(4);
-                        pdfTable.addCell(pdfCell);
-                    }
+            // Render elements from docx in sequential order (preserving table placement)
+            for (IBodyElement elem : docx.getBodyElements()) {
+                if (elem.getElementType() == BodyElementType.PARAGRAPH) {
+                    renderDocxParagraph(document, (XWPFParagraph) elem);
+                } else if (elem.getElementType() == BodyElementType.TABLE) {
+                    renderDocxTable(document, (XWPFTable) elem);
                 }
-                document.add(pdfTable);
-            }
-
-            // Render paragraphs from docx
-            for (XWPFParagraph p : docx.getParagraphs()) {
-                String text = p.getText().trim();
-                if (text.isEmpty()) {
-                    continue;
-                }
-
-                // Skip header duplicates and footer duplicates if template was already embedded in text
-                String upper = text.toUpperCase();
-                if (upper.contains("VIDUSHI KHANNA")
-                        || upper.contains("9266973332")
-                        || upper.contains("9266987111")
-                        || upper.contains("KATWARIA SARAI")
-                        || upper.contains("FOOD POINT")
-                        || upper.contains("CLASSES 6TH")
-                        || upper.equals("ALPHA TUTOR")) {
-                    continue;
-                }
-
-                Paragraph pdfPara;
-                if (text.toUpperCase().startsWith("SECTION") || text.startsWith("#")) {
-                    pdfPara = new Paragraph(cleanMarkdown(text), FONT_SECTION);
-                    pdfPara.setSpacingBefore(12);
-                    pdfPara.setSpacingAfter(6);
-                } else if (text.matches("^\\d+[\\.\\)]\\s+.*")) {
-                    pdfPara = new Paragraph(cleanMarkdown(text), FONT_BOLD_BODY);
-                    pdfPara.setSpacingBefore(6);
-                    pdfPara.setSpacingAfter(3);
-                    pdfPara.setIndentationLeft(10);
-                } else {
-                    pdfPara = new Paragraph(cleanMarkdown(text), FONT_BODY);
-                    pdfPara.setSpacingBefore(3);
-                    pdfPara.setSpacingAfter(3);
-                }
-                document.add(pdfPara);
             }
 
             document.close();
@@ -182,6 +138,188 @@ public class PdfExportService {
             log.error("Failed to convert DOCX to PDF: {}", e.getMessage(), e);
             throw new IllegalStateException("DOCX to PDF conversion failed: " + e.getMessage(), e);
         }
+    }
+
+    private void renderDocxParagraph(Document document, XWPFParagraph p) throws Exception {
+        String text = p.getText().trim();
+        if (text.isEmpty()) {
+            return;
+        }
+
+        // Skip header duplicates and footer duplicates if template was already embedded in text
+        String upper = text.toUpperCase();
+        if (upper.contains("VIDUSHI KHANNA")
+                || upper.contains("9266973332")
+                || upper.contains("9266987111")
+                || upper.contains("KATWARIA SARAI")
+                || upper.contains("FOOD POINT")
+                || upper.contains("CLASSES 6TH")
+                || upper.equals("ALPHA TUTOR")) {
+            return;
+        }
+
+        // Skip any leftover dummy student info table text
+        if (upper.contains("STUDENT NAME:") && upper.contains("ROLL NO:")) {
+            return;
+        }
+
+        // Headings: MUST be bold and centre aligned
+        if (isHeadingParagraph(p, text, upper)) {
+            Paragraph pdfPara = new Paragraph(cleanMarkdown(text), FONT_SECTION);
+            pdfPara.setAlignment(Element.ALIGN_CENTER);
+            pdfPara.setSpacingBefore(14);
+            pdfPara.setSpacingAfter(6);
+            document.add(pdfPara);
+        } else if (text.matches("^\\d+[\\.\\)]\\s+.*")) {
+            Paragraph pdfPara = new Paragraph(cleanMarkdown(text), FONT_BOLD_BODY);
+            pdfPara.setSpacingBefore(6);
+            pdfPara.setSpacingAfter(3);
+            pdfPara.setIndentationLeft(10);
+            document.add(pdfPara);
+        } else if (text.matches("^[\\(\\[]?[A-Da-d][\\)\\]\\.]\\s+.*") || text.startsWith("- ") || text.startsWith("* ")) {
+            Paragraph pdfPara = new Paragraph(cleanMarkdown(text), FONT_BODY);
+            pdfPara.setSpacingBefore(2);
+            pdfPara.setSpacingAfter(2);
+            pdfPara.setIndentationLeft(20);
+            document.add(pdfPara);
+        } else {
+            Paragraph pdfPara = new Paragraph(cleanMarkdown(text), FONT_BODY);
+            pdfPara.setSpacingBefore(3);
+            pdfPara.setSpacingAfter(3);
+            if (p.getAlignment() == ParagraphAlignment.CENTER) {
+                pdfPara.setAlignment(Element.ALIGN_CENTER);
+            }
+            document.add(pdfPara);
+        }
+    }
+
+    private boolean isHeadingParagraph(XWPFParagraph p, String text, String upper) {
+        String style = p.getStyle();
+        if (style != null && (style.toLowerCase().contains("heading") || style.toLowerCase().contains("title"))) {
+            return true;
+        }
+        if (text.startsWith("#")
+                || upper.startsWith("SECTION")
+                || upper.startsWith("PART ")
+                || upper.startsWith("CHAPTER")
+                || upper.startsWith("GENERAL INSTRUCTION")
+                || upper.startsWith("INSTRUCTION")
+                || upper.startsWith("ANSWER KEY")
+                || upper.startsWith("PRACTICE QUESTION")
+                || upper.startsWith("CLASSROOM WORKSHEET")
+                || upper.startsWith("EXAMINATION PAPER")
+                || upper.startsWith("REVISION NOTES")) {
+            return true;
+        }
+        // Short standalone line (<= 60 chars) where all runs are bold
+        if (text.length() <= 60 && !p.getRuns().isEmpty()) {
+            boolean allBold = true;
+            for (XWPFRun r : p.getRuns()) {
+                if (!r.isBold() && !r.text().trim().isEmpty()) {
+                    allBold = false;
+                    break;
+                }
+            }
+            if (allBold && (p.getAlignment() == ParagraphAlignment.CENTER || text.equals(upper))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void renderDocxTable(Document document, XWPFTable table) throws Exception {
+        if (table.getRows().isEmpty()) {
+            return;
+        }
+
+        // Filter out dummy student box table if present
+        String tableText = table.getText().toUpperCase();
+        if (tableText.contains("STUDENT NAME:") && tableText.contains("ROLL NO:")) {
+            return;
+        }
+
+        int maxCols = 0;
+        for (XWPFTableRow row : table.getRows()) {
+            int rowCols = 0;
+            for (XWPFTableCell cell : row.getTableCells()) {
+                rowCols += getCellColSpan(cell);
+            }
+            if (rowCols > maxCols) {
+                maxCols = rowCols;
+            }
+        }
+        if (maxCols == 0) {
+            maxCols = 1;
+        }
+
+        PdfPTable pdfTable = new PdfPTable(maxCols);
+        pdfTable.setWidthPercentage(100);
+        pdfTable.setSpacingBefore(10f);
+        pdfTable.setSpacingAfter(12f);
+
+        boolean isFirstRow = true;
+        for (XWPFTableRow row : table.getRows()) {
+            int colsAdded = 0;
+            for (XWPFTableCell cell : row.getTableCells()) {
+                int colSpan = getCellColSpan(cell);
+                String cellText = cell.getText().trim();
+
+                Font font = isFirstRow
+                        ? FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9.5f, COLOR_PRIMARY)
+                        : FontFactory.getFont(FontFactory.HELVETICA, 9.0f, COLOR_TEXT);
+
+                Paragraph p = new Paragraph(cleanMarkdown(cellText), font);
+                if (isFirstRow) {
+                    p.setAlignment(Element.ALIGN_CENTER);
+                }
+
+                PdfPCell pdfCell = new PdfPCell(p);
+                if (colSpan > 1) {
+                    pdfCell.setColspan(colSpan);
+                }
+                colsAdded += colSpan;
+
+                // Professional table cell styling: borders, padding, and subtle header shading
+                pdfCell.setPadding(6f);
+                pdfCell.setBorderColor(new Color(190, 200, 215));
+                pdfCell.setBorderWidth(0.8f);
+
+                if (isFirstRow) {
+                    pdfCell.setBackgroundColor(new Color(238, 243, 250)); // subtle blue-gray header
+                    pdfCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+                } else {
+                    pdfCell.setHorizontalAlignment(Element.ALIGN_LEFT);
+                }
+
+                pdfTable.addCell(pdfCell);
+            }
+
+            // Fill missing columns in the row so table geometry stays valid
+            while (colsAdded < maxCols) {
+                PdfPCell empty = new PdfPCell(new Phrase(""));
+                empty.setPadding(6f);
+                empty.setBorderColor(new Color(190, 200, 215));
+                empty.setBorderWidth(0.8f);
+                pdfTable.addCell(empty);
+                colsAdded++;
+            }
+            isFirstRow = false;
+        }
+
+        document.add(pdfTable);
+    }
+
+    private int getCellColSpan(XWPFTableCell cell) {
+        try {
+            if (cell.getCTTc() != null && cell.getCTTc().getTcPr() != null && cell.getCTTc().getTcPr().getGridSpan() != null) {
+                var val = cell.getCTTc().getTcPr().getGridSpan().getVal();
+                if (val != null) {
+                    return val.intValue();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return 1;
     }
 
     private byte[] loadHeaderImageBytes() {
@@ -202,71 +340,162 @@ public class PdfExportService {
         return null;
     }
 
-    private void addStudentBox(Document document) throws Exception {
-        PdfPTable table = new PdfPTable(3);
-        table.setWidthPercentage(100);
-        table.setSpacingBefore(4);
-        table.setSpacingAfter(10);
-
-        table.addCell(createCell("Student Name: _____________________"));
-        table.addCell(createCell("Roll No: ____________"));
-        table.addCell(createCell("Date: ____________"));
-
-        table.addCell(createCell("Class & Sec: _______________________"));
-        table.addCell(createCell("Time: 45 Mins"));
-        table.addCell(createCell("Max Marks: ________"));
-
-        document.add(table);
-    }
-
-    private PdfPCell createCell(String text) {
-        PdfPCell cell = new PdfPCell(new Phrase(text, FONT_SMALL));
-        cell.setPadding(5);
-        cell.setBorderColor(new Color(200, 200, 200));
-        return cell;
-    }
-
     private void addBodyContent(Document document, String content) throws Exception {
         if (content == null || content.isBlank()) {
             return;
         }
 
         String[] lines = content.split("\n");
-        for (String rawLine : lines) {
+        List<String> tableBuffer = new ArrayList<>();
+
+        for (int i = 0; i < lines.length; i++) {
+            String rawLine = lines[i];
             String line = rawLine.trim();
+
+            // Detect Markdown Table lines (starting and ending with | or containing multiple |)
+            if (line.startsWith("|") && line.endsWith("|") && line.length() > 2) {
+                tableBuffer.add(line);
+                boolean isLastLine = (i == lines.length - 1);
+                String nextLine = isLastLine ? "" : lines[i + 1].trim();
+                if (isLastLine || !nextLine.startsWith("|") || !nextLine.endsWith("|")) {
+                    renderMarkdownTable(document, tableBuffer);
+                    tableBuffer.clear();
+                }
+                continue;
+            } else if (!tableBuffer.isEmpty()) {
+                renderMarkdownTable(document, tableBuffer);
+                tableBuffer.clear();
+            }
+
             if (line.isEmpty()) {
                 continue;
             }
 
-            if (line.startsWith("# ") || line.toUpperCase().startsWith("SECTION") || line.toUpperCase().startsWith("PART ")) {
+            String upper = line.toUpperCase();
+
+            // Heading 1 / Section - Bold & Center-Aligned
+            if (line.startsWith("# ")
+                    || upper.startsWith("SECTION")
+                    || upper.startsWith("PART ")
+                    || upper.startsWith("CHAPTER")
+                    || upper.startsWith("GENERAL INSTRUCTION")
+                    || upper.startsWith("INSTRUCTION")
+                    || upper.startsWith("ANSWER KEY")
+                    || upper.startsWith("PRACTICE QUESTION")) {
                 Paragraph p = new Paragraph(cleanMarkdown(line), FONT_SECTION);
-                p.setSpacingBefore(12);
-                p.setSpacingAfter(5);
+                p.setAlignment(Element.ALIGN_CENTER);
+                p.setSpacingBefore(14);
+                p.setSpacingAfter(6);
                 document.add(p);
-            } else if (line.startsWith("## ") || line.startsWith("### ")) {
-                Paragraph p = new Paragraph(cleanMarkdown(line), FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10.5f, COLOR_PRIMARY));
-                p.setSpacingBefore(8);
-                p.setSpacingAfter(3);
+            }
+            // Heading 2 / Sub-section - Bold & Center-Aligned
+            else if (line.startsWith("## ") || line.startsWith("### ")) {
+                Paragraph p = new Paragraph(cleanMarkdown(line), FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11f, COLOR_PRIMARY));
+                p.setAlignment(Element.ALIGN_CENTER);
+                p.setSpacingBefore(10);
+                p.setSpacingAfter(4);
                 document.add(p);
-            } else if (line.matches("^\\d+[\\.\\)]\\s+.*")) {
+            }
+            // Numbered question or list item
+            else if (line.matches("^\\d+[\\.\\)]\\s+.*")) {
                 Paragraph p = new Paragraph(cleanMarkdown(line), FONT_BOLD_BODY);
                 p.setSpacingBefore(6);
                 p.setSpacingAfter(3);
                 p.setIndentationLeft(8);
                 document.add(p);
-            } else if (line.matches("^[\\(\\[]?[A-Da-d][\\)\\]\\.]\\s+.*") || line.startsWith("- ") || line.startsWith("* ")) {
+            }
+            // Options (A), (B) or bullets
+            else if (line.matches("^[\\(\\[]?[A-Da-d][\\)\\]\\.]\\s+.*") || line.startsWith("- ") || line.startsWith("* ")) {
                 Paragraph p = new Paragraph(cleanMarkdown(line), FONT_BODY);
                 p.setSpacingBefore(2);
                 p.setSpacingAfter(2);
                 p.setIndentationLeft(20);
                 document.add(p);
-            } else {
+            }
+            // Regular text
+            else {
                 Paragraph p = new Paragraph(cleanMarkdown(line), FONT_BODY);
                 p.setSpacingBefore(3);
                 p.setSpacingAfter(3);
                 document.add(p);
             }
         }
+
+        if (!tableBuffer.isEmpty()) {
+            renderMarkdownTable(document, tableBuffer);
+            tableBuffer.clear();
+        }
+    }
+
+    private void renderMarkdownTable(Document document, List<String> tableLines) throws Exception {
+        if (tableLines.isEmpty()) {
+            return;
+        }
+
+        List<String[]> parsedRows = new ArrayList<>();
+        for (String raw : tableLines) {
+            String stripped = raw.replaceAll("^\\|", "").replaceAll("\\|$", "");
+            // Skip markdown delimiter line like |---|---|
+            if (stripped.matches("^[\\s\\-:\\|]+$")) {
+                continue;
+            }
+            String[] cols = stripped.split("\\|");
+            for (int c = 0; c < cols.length; c++) {
+                cols[c] = cleanMarkdown(cols[c].trim());
+            }
+            parsedRows.add(cols);
+        }
+
+        if (parsedRows.isEmpty()) {
+            return;
+        }
+
+        int maxCols = 0;
+        for (String[] r : parsedRows) {
+            if (r.length > maxCols) {
+                maxCols = r.length;
+            }
+        }
+        if (maxCols == 0) {
+            maxCols = 1;
+        }
+
+        PdfPTable pdfTable = new PdfPTable(maxCols);
+        pdfTable.setWidthPercentage(100);
+        pdfTable.setSpacingBefore(10f);
+        pdfTable.setSpacingAfter(12f);
+
+        for (int r = 0; r < parsedRows.size(); r++) {
+            boolean isHeader = (r == 0);
+            String[] rowData = parsedRows.get(r);
+            Font cellFont = isHeader
+                    ? FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9.5f, COLOR_PRIMARY)
+                    : FontFactory.getFont(FontFactory.HELVETICA, 9.0f, COLOR_TEXT);
+
+            for (int c = 0; c < maxCols; c++) {
+                String val = (c < rowData.length) ? rowData[c] : "";
+                Paragraph p = new Paragraph(val, cellFont);
+                if (isHeader) {
+                    p.setAlignment(Element.ALIGN_CENTER);
+                }
+
+                PdfPCell pdfCell = new PdfPCell(p);
+                pdfCell.setPadding(6f);
+                pdfCell.setBorderColor(new Color(190, 200, 215));
+                pdfCell.setBorderWidth(0.8f);
+
+                if (isHeader) {
+                    pdfCell.setBackgroundColor(new Color(238, 243, 250));
+                    pdfCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+                } else {
+                    pdfCell.setHorizontalAlignment(Element.ALIGN_LEFT);
+                }
+
+                pdfTable.addCell(pdfCell);
+            }
+        }
+
+        document.add(pdfTable);
     }
 
     private String cleanMarkdown(String text) {

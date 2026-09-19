@@ -78,8 +78,71 @@ class DocumentGenerationTest {
             assertThat(pageContent).contains("VIDUSHI KHANNA");
             assertThat(pageContent).contains("9266973332");
             assertThat(pageContent).contains("Katwaria Sarai");
+            // Verify dummy student box is NOT present
+            assertThat(pageContent).doesNotContain("Student Name: _____________________");
         }
         reader.close();
+    }
+
+    @Test
+    void testTableRenderingAndHeadingCentering() throws Exception {
+        PdfExportService pdfService = new PdfExportService();
+
+        // 1. Direct PDF with Markdown Table and Headings
+        String contentWithTable = """
+                # SECTION A: DIFFERENCES
+                Please study the following table carefully:
+
+                | Parameter | Mitosis | Meiosis |
+                |---|---|---|
+                | Occurs in | Somatic cells | Reproductive cells |
+                | Divisions | Single division | Two divisions |
+                | Daughter cells | 2 diploid cells | 4 haploid cells |
+
+                # SECTION B: APPLICATION
+                1. Which division is responsible for genetic variation?
+                """;
+
+        byte[] pdfBytes = pdfService.exportPdf("CLASSROOM WORKSHEET", "Class 10 Biology - Cell Division", contentWithTable);
+        assertThat(pdfBytes).isNotEmpty();
+
+        com.lowagie.text.pdf.PdfReader reader = new com.lowagie.text.pdf.PdfReader(pdfBytes);
+        String page1 = new String(reader.getPageContent(1));
+        assertThat(page1).doesNotContain("Student Name: _____________________");
+        assertThat(page1).contains("Mitosis");
+        assertThat(page1).contains("Meiosis");
+        assertThat(page1).contains("Somatic cells");
+        reader.close();
+
+        // 2. DOCX with Table converted to PDF
+        try (XWPFDocument doc = new XWPFDocument();
+             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            var titleP = doc.createParagraph();
+            titleP.createRun().setText("SECTION A: FORMULAS");
+
+            var table = doc.createTable(3, 2);
+            table.getRow(0).getCell(0).setText("Quantity");
+            table.getRow(0).getCell(1).setText("SI Unit");
+            table.getRow(1).getCell(0).setText("Speed");
+            table.getRow(1).getCell(1).setText("m/s");
+            table.getRow(2).getCell(0).setText("Force");
+            table.getRow(2).getCell(1).setText("Newton");
+
+            var afterP = doc.createParagraph();
+            afterP.createRun().setText("1. Define velocity.");
+
+            doc.write(out);
+            byte[] convertedPdf = pdfService.convertDocxToPdf(out.toByteArray());
+            assertThat(convertedPdf).isNotEmpty();
+
+            com.lowagie.text.pdf.PdfReader docxPdfReader = new com.lowagie.text.pdf.PdfReader(convertedPdf);
+            String docxPage1 = new String(docxPdfReader.getPageContent(1));
+            assertThat(docxPage1).contains("Quantity");
+            assertThat(docxPage1).contains("SI Unit");
+            assertThat(docxPage1).contains("Newton");
+            assertThat(docxPage1).doesNotContain("Student Name: _____________________");
+            docxPdfReader.close();
+        }
     }
 
     @Test
