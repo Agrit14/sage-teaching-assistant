@@ -1,18 +1,40 @@
 package com.sage.teachingassistant.ai;
 
+import com.sage.teachingassistant.improvement.ImprovementRuleService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
  * High-level service that orchestrates AI research and content generation
  * for Worksheets, Tests, and Notes.
+ * Integrates with the ImprovementRuleService to dynamically apply teacher rules
+ * and historical feedback per stage.
  */
 @Service
 public class EducationalContentService {
 
     private final GeminiClient geminiClient;
+    private final ImprovementRuleService improvementRuleService;
 
     public EducationalContentService(GeminiClient geminiClient) {
+        this(geminiClient, null);
+    }
+
+    @Autowired
+    public EducationalContentService(GeminiClient geminiClient, @Autowired(required = false) ImprovementRuleService improvementRuleService) {
         this.geminiClient = geminiClient;
+        this.improvementRuleService = improvementRuleService;
+    }
+
+    private String appendImprovementRules(String sys, String stageKey) {
+        if (improvementRuleService == null) {
+            return sys;
+        }
+        String rulePrompt = improvementRuleService.buildRulePrompt(stageKey);
+        if (rulePrompt != null && !rulePrompt.isBlank()) {
+            return sys + "\n\n" + rulePrompt;
+        }
+        return sys;
     }
 
     /**
@@ -32,6 +54,8 @@ public class EducationalContentService {
                 + "### 3. ❓ Confirmation & Next Step\n"
                 + "- Conclude by asking: 'This is what I found on the web for " + className + " - " + chapterName + ". Are you sure you want to go with it?\n\n"
                 + "Click **Confirm** (or reply \"yes\") to proceed and generate the Word (.docx) document, or reply with what you'd like to adjust.'";
+
+        sys = appendImprovementRules(sys, "worksheet-research");
 
         String prompt = "Target Class/Grade: " + className + "\n"
                 + "Chapter / Subject Topic: " + chapterName + "\n";
@@ -67,6 +91,8 @@ public class EducationalContentService {
                 + "- Conclude by asking: 'This is what I found on the web for " + className + " - " + chapterName + ". Are you sure you want to go with it?\n\n"
                 + "Click **Confirm** (or reply \"yes\") to proceed and generate the Word (.docx) document, or reply with what you'd like to adjust.'";
 
+        sys = appendImprovementRules(sys, "test-research");
+
         String prompt = "Target Class/Grade: " + className + "\n"
                 + "Chapter / Subject Topic: " + chapterName + "\n";
         if (additionalDetails != null && !additionalDetails.isBlank()) {
@@ -101,6 +127,8 @@ public class EducationalContentService {
                 + "- Conclude by asking: 'This is what I found on the web for " + className + " - " + chapterName + ". Are you sure you want to go with it?\n\n"
                 + "Click **Confirm** (or reply \"yes\") to proceed and generate the Word (.docx) document, or reply with what you'd like to adjust.'";
 
+        sys = appendImprovementRules(sys, "notes-research");
+
         String prompt = "Target Class/Grade: " + className + "\n"
                 + "Chapter / Subject Topic: " + chapterName + "\n";
         if (additionalDetails != null && !additionalDetails.isBlank()) {
@@ -132,6 +160,8 @@ public class EducationalContentService {
                 + "At the very end of the document, provide a dedicated section titled '# ANSWER KEY & SOLUTIONS' "
                 + "containing complete answers, correct options, and brief explanations for every question.";
 
+        sys = appendImprovementRules(sys, "worksheet-draft");
+
         String prompt = "Topic & Grade: " + request + "\n"
                 + "Approved Outline: " + approvedOutline + "\n";
         if (feedback != null && !feedback.isBlank()) {
@@ -154,6 +184,8 @@ public class EducationalContentService {
                 + "At the very end of the document, provide a dedicated section titled '# ANSWER KEY & MARKING SCHEME' "
                 + "containing the complete answer key, step-by-step solutions, and marking rubric for the teacher.";
 
+        sys = appendImprovementRules(sys, "test-draft");
+
         String prompt = "Topic & Grade: " + request + "\n"
                 + "Approved Blueprint: " + approvedBlueprint + "\n";
         if (feedback != null && !feedback.isBlank()) {
@@ -171,6 +203,8 @@ public class EducationalContentService {
         String sys = "You are Sage, generating comprehensive, student-friendly Alpha Tutor Revision Notes. "
                 + "Include clearly defined headings, bullet-point explanations of core concepts, key definitions, "
                 + "important formulas, mnemonics/tips, and a 'Summary at a Glance' section.";
+
+        sys = appendImprovementRules(sys, "notes-draft");
 
         String prompt = "Topic & Grade: " + request + "\n"
                 + "Approved Outline: " + approvedOutline + "\n";
@@ -192,6 +226,8 @@ public class EducationalContentService {
                 + "Answer the user's question clearly, accurately, and educationally. "
                 + "Provide explanations, formulas, definitions, or examples where appropriate. "
                 + "Use clean formatting such as bullet points and bold key terms to make the response engaging.";
+
+        sys = appendImprovementRules(sys, "direct-answer");
 
         String prompt = (question != null && !question.isBlank()) ? question.trim() : "Hello! How can I assist you with your studies today?";
         return geminiClient.generate(sys, prompt, false);

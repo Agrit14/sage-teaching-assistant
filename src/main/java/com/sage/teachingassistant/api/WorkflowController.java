@@ -2,6 +2,8 @@ package com.sage.teachingassistant.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sage.teachingassistant.ai.EducationalContentService;
+import com.sage.teachingassistant.api.dto.FeedbackRequest;
+import com.sage.teachingassistant.api.dto.ImprovementRuleResponse;
 import com.sage.teachingassistant.api.dto.RunDetailResponse;
 import com.sage.teachingassistant.api.dto.RunMessageRequest;
 import com.sage.teachingassistant.api.dto.RunResponse;
@@ -11,11 +13,13 @@ import com.sage.teachingassistant.document.FileStorageService;
 import com.sage.teachingassistant.domain.RunStatus;
 import com.sage.teachingassistant.domain.StageExecution;
 import com.sage.teachingassistant.domain.WorkflowRun;
+import com.sage.teachingassistant.improvement.ImprovementRuleService;
 import com.sage.teachingassistant.repository.StageExecutionRepository;
 import com.sage.teachingassistant.repository.WorkflowRunRepository;
 import com.sage.teachingassistant.workflow.WorkflowEngine;
 import com.sage.teachingassistant.workflow.WorkflowRegistry;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -44,6 +48,7 @@ import java.util.Optional;
  * <p>Covers a whole run: start it, send it messages, upload docx files, download
  * generated docx / pdf files, and read run history.
  * Routes general questions without document context directly to the LLM.
+ * Exposes feedback endpoints for the Improvement Layer.
  */
 @RestController
 @RequestMapping("/api/v1/workflows")
@@ -56,6 +61,7 @@ public class WorkflowController {
     private final WorkflowRunRepository runRepository;
     private final StageExecutionRepository executionRepository;
     private final ObjectMapper objectMapper;
+    private final ImprovementRuleService improvementRuleService;
 
     public WorkflowController(WorkflowEngine engine,
                               WorkflowRegistry registry,
@@ -64,6 +70,18 @@ public class WorkflowController {
                               WorkflowRunRepository runRepository,
                               StageExecutionRepository executionRepository,
                               ObjectMapper objectMapper) {
+        this(engine, registry, storageService, educationalService, runRepository, executionRepository, objectMapper, null);
+    }
+
+    @Autowired
+    public WorkflowController(WorkflowEngine engine,
+                              WorkflowRegistry registry,
+                              FileStorageService storageService,
+                              EducationalContentService educationalService,
+                              WorkflowRunRepository runRepository,
+                              StageExecutionRepository executionRepository,
+                              ObjectMapper objectMapper,
+                              @Autowired(required = false) ImprovementRuleService improvementRuleService) {
         this.engine = engine;
         this.registry = registry;
         this.storageService = storageService;
@@ -71,6 +89,7 @@ public class WorkflowController {
         this.runRepository = runRepository;
         this.executionRepository = executionRepository;
         this.objectMapper = objectMapper;
+        this.improvementRuleService = improvementRuleService;
     }
 
     /** Lists the workflows available to start, with their stages in order. */
@@ -261,5 +280,32 @@ public class WorkflowController {
 
         // 3. Convert into Alpha Tutor PDF template and return
         return RunResponse.from(engine.handleMessage(run.runId(), "Process uploaded file"));
+    }
+
+    /**
+     * Records teacher feedback/suggestion for a specific stage or globally,
+     * saving it to the database as an improvement rule that guides future LLM generation.
+     */
+    @PostMapping("/feedback")
+    public ImprovementRuleResponse submitFeedback(@Valid @RequestBody FeedbackRequest request) {
+        if (improvementRuleService == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Improvement service is not configured");
+        }
+        return improvementRuleService.recordFeedback(request);
+    }
+
+    /**
+     * Lists active improvement rules, optionally filtered by stageKey.
+     */
+    @GetMapping("/feedback")
+    public List<ImprovementRuleResponse> listFeedbackRules(
+            @RequestParam(value = "stageKey", required = false) String stageKey) {
+        if (improvementRuleService == null) {
+            return List.of();
+        }
+        if (stageKey != null && !stageKey.isBlank()) {
+            return improvementRuleService.listRulesForStage(stageKey.trim());
+        }
+        return improvementRuleService.listActiveRules();
     }
 }
