@@ -64,9 +64,12 @@ When the user picks an option (Worksheet, Test, or Notes) from the chatbot or da
     "stage.canConfirm": "true",
     "stage.action": "confirm_outline"
   },
-  "completed": false
+  "completed": false,
+  "canApprove": true
 }
 ```
+
+> **UI Tip**: The `canApprove: true` field tells your UI to render the **Approve** button on every stage until the workflow completes (`completed: true`).
 
 **UI Display for Stage 1**:
 - Display the 3 items returned in `message`:
@@ -74,18 +77,18 @@ When the user picks an option (Worksheet, Test, or Notes) from the chatbot or da
   2. **Reference Web Links** (clickable links for user to verify).
   3. **Confirmation Question**.
 - Show two primary UI elements:
-  1. A **Confirm** button (calls the 1-click `/confirm` endpoint or sends `"confirm"`).
+  1. An **Approve / Confirm** button (calls `POST /runs/{runId}/approve`).
   2. An **Adjust / Feedback** text field (e.g. "change difficulty to hard").
 
 ---
 
-### STEP 2: Advancing Stages with the "Confirm" Button or Messages
+### STEP 2: Advancing Stages with the "Approve" Button or Messages
 
 Each stage has an active confirmation action. When the user reviews the information and is happy, they can confirm to move forward.
 
-#### Option A: 1-Click Confirm Button (Recommended)
-Simply hit the dedicated confirm endpoint:
-- **Endpoint**: `POST /api/v1/workflows/runs/{runId}/confirm`
+#### Option A: 1-Click Approve / Confirm Button (Recommended)
+Simply hit either endpoint (both are mapped and supported):
+- **Endpoint**: `POST /api/v1/workflows/runs/{runId}/approve` *(or `/confirm`)*
 - **Method**: `POST` (empty body)
 
 #### Option B: Chatbot Message Approval
@@ -94,10 +97,10 @@ Or send a message payload:
 - **Request Body**:
 ```json
 {
-  "message": "confirm"
+  "message": "approve"
 }
 ```
-*(Keywords recognized as approval: `"confirm"`, `"confirmed"`, `"yes"`, `"approve"`, `"proceed"`).*
+*(Keywords recognized as approval: `"approve"`, `"approved"`, `"confirm"`, `"confirmed"`, `"yes"`, `"proceed"`).*
 
 #### Option C: Asking for Changes / Revisions (Iterative Feedback)
 If the user wants adjustments:

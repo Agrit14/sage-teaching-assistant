@@ -71,12 +71,15 @@ public class WorkflowController {
     }
 
     /**
-     * Confirms the current stage of a run and proceeds to the next stage
+     * Confirms / approves the current stage of a run and proceeds to the next stage
      * (or completes if on the final stage).
+     *
+     * <p>Both {@code /confirm} and {@code /approve} are mapped so clients can use
+     * whichever naming convention their UI utilizes.
      */
-    @PostMapping("/runs/{runId}/confirm")
+    @PostMapping({"/runs/{runId}/confirm", "/runs/{runId}/approve"})
     public RunResponse confirm(@PathVariable String runId) {
-        return RunResponse.from(engine.handleMessage(runId, "confirm"));
+        return RunResponse.from(engine.handleMessage(runId, "approve"));
     }
 
     /**
@@ -85,8 +88,9 @@ public class WorkflowController {
      */
     @PostMapping("/runs/{runId}/messages")
     public RunResponse send(@PathVariable String runId,
-                            @Valid @RequestBody RunMessageRequest request) {
-        return RunResponse.from(engine.handleMessage(runId, request.message()));
+                            @RequestBody(required = false) RunMessageRequest request) {
+        String msg = (request != null) ? request.resolveMessage() : "approve";
+        return RunResponse.from(engine.handleMessage(runId, msg));
     }
 
     /** The run's current position plus its full execution history. */

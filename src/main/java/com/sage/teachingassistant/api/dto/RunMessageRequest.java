@@ -1,14 +1,17 @@
 package com.sage.teachingassistant.api.dto;
 
-import jakarta.validation.constraints.NotBlank;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 /**
- * Sent to an existing run. The message is either an approval ("yes") or
+ * Sent to an existing run. The message is either an approval ("yes", "approve") or
  * instructions for changing the current stage's output.
  */
 public record RunMessageRequest(
 
-        @NotBlank(message = "message must not be blank")
+        @JsonAlias({"text", "feedback", "action", "reply", "input", "command"})
         String message
 ) {
+    public String resolveMessage() {
+        return (message != null && !message.isBlank()) ? message.trim() : "approve";
+    }
 }

@@ -1,5 +1,6 @@
 package com.sage.teachingassistant.api.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 
 /**
@@ -12,11 +13,19 @@ import jakarta.validation.constraints.NotBlank;
 public record StartRunRequest(
 
         @NotBlank(message = "workflowKey must not be blank")
+        @JsonAlias({"workflow_key", "workflow", "type", "workflowId", "option", "selection"})
         String workflowKey,
 
+        @JsonAlias({"prompt", "query", "text", "description"})
         String message,
+
+        @JsonAlias({"class_name", "className", "class", "grade", "standard"})
         String className,
+
+        @JsonAlias({"chapter_name", "chapterName", "chapter", "topic", "subject_topic"})
         String chapterName,
+
+        @JsonAlias({"additional_details", "additionalDetails", "details", "context", "notes", "additionalContext"})
         String additionalDetails
 ) {
     /**

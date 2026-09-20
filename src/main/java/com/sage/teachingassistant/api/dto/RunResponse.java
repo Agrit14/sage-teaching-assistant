@@ -16,10 +16,12 @@ public record RunResponse(
         String stageName,
         String message,
         Map<String, String> output,
-        boolean completed
+        boolean completed,
+        boolean canApprove
 ) {
 
     public static RunResponse from(WorkflowTurn turn) {
+        boolean canApprove = !turn.isCompleted();
         return new RunResponse(
                 turn.runId(),
                 turn.workflowKey(),
@@ -30,6 +32,7 @@ public record RunResponse(
                 turn.stageName(),
                 turn.message(),
                 turn.output(),
-                turn.isCompleted());
+                turn.isCompleted(),
+                canApprove);
     }
 }

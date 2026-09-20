@@ -91,4 +91,20 @@ class WorkflowDefinitionTest {
                 .hasMessageContaining("nope")
                 .hasMessageContaining(WORKFLOW);
     }
+
+    @Test
+    void registryResolvesAliases() {
+        WorkflowDefinition ws = new WorkflowDefinition("worksheet-generation", "Worksheet", List.of(new StubStage("worksheet-generation", "ws", "WS")));
+        WorkflowDefinition test = new WorkflowDefinition("test-generation", "Test", List.of(new StubStage("test-generation", "t", "T")));
+        WorkflowDefinition notes = new WorkflowDefinition("notes-generation", "Notes", List.of(new StubStage("notes-generation", "n", "N")));
+        WorkflowDefinition pdf = new WorkflowDefinition("pdf-print", "PDF", List.of(new StubStage("pdf-print", "p", "P")));
+
+        WorkflowRegistry registry = new WorkflowRegistry(List.of(ws, test, notes, pdf));
+
+        assertThat(registry.require("worksheet")).isSameAs(ws);
+        assertThat(registry.require("test")).isSameAs(test);
+        assertThat(registry.require("notes")).isSameAs(notes);
+        assertThat(registry.require("pdf")).isSameAs(pdf);
+    }
 }
+

@@ -26,11 +26,37 @@ public class WorkflowRegistry {
     }
 
     public WorkflowDefinition require(String workflowKey) {
-        WorkflowDefinition definition = definitions.get(workflowKey);
-        if (definition == null) {
-            throw new WorkflowNotFoundException(workflowKey, definitions.keySet());
+        if (workflowKey == null) {
+            throw new WorkflowNotFoundException("null", definitions.keySet());
         }
-        return definition;
+        String trimmed = workflowKey.trim();
+        WorkflowDefinition exact = definitions.get(trimmed);
+        if (exact != null) {
+            return exact;
+        }
+        String normalized = normalizeKey(trimmed);
+        WorkflowDefinition aliased = definitions.get(normalized);
+        if (aliased != null) {
+            return aliased;
+        }
+        throw new WorkflowNotFoundException(workflowKey, definitions.keySet());
+    }
+
+    private static String normalizeKey(String key) {
+        String k = key.toLowerCase().replace('_', '-').replace(' ', '-');
+        if (k.equals("worksheet") || k.startsWith("worksheet")) {
+            return "worksheet-generation";
+        }
+        if (k.equals("test") || k.equals("exam") || k.startsWith("test")) {
+            return "test-generation";
+        }
+        if (k.equals("notes") || k.equals("revision") || k.startsWith("note")) {
+            return "notes-generation";
+        }
+        if (k.equals("pdf") || k.equals("print") || k.contains("pdf")) {
+            return "pdf-print";
+        }
+        return k;
     }
 
     public Collection<WorkflowDefinition> all() {
