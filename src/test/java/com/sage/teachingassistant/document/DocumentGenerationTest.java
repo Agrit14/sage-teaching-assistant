@@ -38,6 +38,99 @@ class DocumentGenerationTest {
         // Verify valid XWPF document
         try (XWPFDocument doc = new XWPFDocument(new ByteArrayInputStream(docxBytes))) {
             assertThat(doc.getParagraphs()).isNotEmpty();
+            // Verify title is the very first paragraph (starts directly on page 1)
+            assertThat(doc.getParagraphs().get(0).getText()).isEqualTo("CLASSROOM WORKSHEET");
+            assertThat(doc.getParagraphs().get(1).getText()).isEqualTo("Class 9 Science - Cell & Electricity");
+            // Verify no template artifacts
+            for (var p : doc.getParagraphs()) {
+                assertThat(p.getText()).doesNotContain("VIDUSHI KHANNA");
+            }
+        }
+    }
+
+    @Test
+    void testDocxTableGeneration() throws Exception {
+        DocxTemplateGenerator generator = new DocxTemplateGenerator();
+
+        String body = """
+                # SECTION A: Study Table
+                | Quantity | Unit | Symbol |
+                |---|---|---|
+                | Force | Newton | N |
+                | Energy | Joule | J |
+
+                1. What is the unit of Force?
+                """;
+
+        byte[] docxBytes = generator.generateDocument("STUDY SHEET", "Class 10 Physics", body);
+        assertThat(docxBytes).isNotEmpty();
+
+        try (XWPFDocument doc = new XWPFDocument(new ByteArrayInputStream(docxBytes))) {
+            assertThat(doc.getTables()).hasSize(1);
+            var table = doc.getTables().get(0);
+            assertThat(table.getNumberOfRows()).isEqualTo(3);
+            assertThat(table.getRow(0).getCell(0).getText()).isEqualTo("Quantity");
+            assertThat(table.getRow(1).getCell(0).getText()).isEqualTo("Force");
+            assertThat(table.getRow(1).getCell(1).getText()).isEqualTo("Newton");
+            assertThat(table.getRow(1).getCell(2).getText()).isEqualTo("N");
+        }
+    }
+
+    @Test
+    void testAnswersOrganizedAtEndOfDocument() throws Exception {
+        DocxTemplateGenerator generator = new DocxTemplateGenerator();
+
+        String bodyWithInlineAnswers = """
+                # SECTION A: Multiple Choice Questions
+                1. What is the powerhouse of the cell?
+                   (A) Nucleus
+                   (B) Mitochondria
+                   (C) Ribosome
+                   (D) Chloroplast
+                   Answer: (B) Mitochondria
+
+                # SECTION B: Conceptual Questions
+                2. State Ohm's Law and write its formula. [2 Marks]
+                   **Ans:** V = I * R, where V is voltage, I is current, and R is resistance.
+                """;
+
+        byte[] docxBytes = generator.generateDocument(
+                "CLASSROOM WORKSHEET",
+                "Class 9 Science",
+                bodyWithInlineAnswers);
+
+        try (XWPFDocument doc = new XWPFDocument(new ByteArrayInputStream(docxBytes))) {
+            var paragraphs = doc.getParagraphs();
+            
+            // Collect all paragraph texts
+            var texts = paragraphs.stream().map(org.apache.poi.xwpf.usermodel.XWPFParagraph::getText).toList();
+
+            // Verify that immediately following question 1 options, Answer is NOT present
+            int q1Index = -1;
+            int answerKeyIndex = -1;
+            for (int i = 0; i < texts.size(); i++) {
+                if (texts.get(i).contains("What is the powerhouse of the cell?")) {
+                    q1Index = i;
+                }
+                if (texts.get(i).contains("ANSWER KEY & SOLUTIONS")) {
+                    answerKeyIndex = i;
+                }
+            }
+
+            assertThat(q1Index).isGreaterThanOrEqualTo(0);
+            assertThat(answerKeyIndex).isGreaterThan(q1Index);
+
+            // Verify paragraph immediately following option (D) is not the answer
+            assertThat(texts.get(q1Index + 4)).contains("(D) Chloroplast");
+            assertThat(texts.get(q1Index + 5)).doesNotContain("Answer: (B) Mitochondria");
+
+            // Verify Answer Key is at the end
+            assertThat(texts.get(answerKeyIndex)).contains("ANSWER KEY & SOLUTIONS");
+            assertThat(texts.subList(answerKeyIndex, texts.size()).toString()).contains("1. Answer: (B) Mitochondria");
+            assertThat(texts.subList(answerKeyIndex, texts.size()).toString()).contains("2. Ans: V = I * R");
+
+            // Verify page break was set on the Answer Key header
+            assertThat(paragraphs.get(answerKeyIndex).isPageBreak()).isTrue();
         }
     }
 

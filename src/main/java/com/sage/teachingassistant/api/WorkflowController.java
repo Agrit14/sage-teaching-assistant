@@ -1,11 +1,18 @@
 package com.sage.teachingassistant.api;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sage.teachingassistant.ai.EducationalContentService;
 import com.sage.teachingassistant.api.dto.RunDetailResponse;
 import com.sage.teachingassistant.api.dto.RunMessageRequest;
 import com.sage.teachingassistant.api.dto.RunResponse;
 import com.sage.teachingassistant.api.dto.StartRunRequest;
 import com.sage.teachingassistant.api.dto.WorkflowSummaryResponse;
 import com.sage.teachingassistant.document.FileStorageService;
+import com.sage.teachingassistant.domain.RunStatus;
+import com.sage.teachingassistant.domain.StageExecution;
+import com.sage.teachingassistant.domain.WorkflowRun;
+import com.sage.teachingassistant.repository.StageExecutionRepository;
+import com.sage.teachingassistant.repository.WorkflowRunRepository;
 import com.sage.teachingassistant.workflow.WorkflowEngine;
 import com.sage.teachingassistant.workflow.WorkflowRegistry;
 import jakarta.validation.Valid;
@@ -28,6 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -35,6 +43,7 @@ import java.util.Optional;
  *
  * <p>Covers a whole run: start it, send it messages, upload docx files, download
  * generated docx / pdf files, and read run history.
+ * Routes general questions without document context directly to the LLM.
  */
 @RestController
 @RequestMapping("/api/v1/workflows")
@@ -43,13 +52,25 @@ public class WorkflowController {
     private final WorkflowEngine engine;
     private final WorkflowRegistry registry;
     private final FileStorageService storageService;
+    private final EducationalContentService educationalService;
+    private final WorkflowRunRepository runRepository;
+    private final StageExecutionRepository executionRepository;
+    private final ObjectMapper objectMapper;
 
     public WorkflowController(WorkflowEngine engine,
                               WorkflowRegistry registry,
-                              FileStorageService storageService) {
+                              FileStorageService storageService,
+                              EducationalContentService educationalService,
+                              WorkflowRunRepository runRepository,
+                              StageExecutionRepository executionRepository,
+                              ObjectMapper objectMapper) {
         this.engine = engine;
         this.registry = registry;
         this.storageService = storageService;
+        this.educationalService = educationalService;
+        this.runRepository = runRepository;
+        this.executionRepository = executionRepository;
+        this.objectMapper = objectMapper;
     }
 
     /** Lists the workflows available to start, with their stages in order. */
@@ -58,16 +79,66 @@ public class WorkflowController {
         return registry.all().stream().map(WorkflowSummaryResponse::from).toList();
     }
 
-    /** Starts a run and executes its first stage. */
+    /**
+     * Starts a run and executes its first stage if an option/context is chosen,
+     * or directly routes general questions to the LLM to give the answer immediately.
+     */
     @PostMapping("/runs")
-    public RunResponse start(@Valid @RequestBody StartRunRequest request) {
-        String effectiveMessage = request.resolveMessage();
-        return RunResponse.from(engine.start(
-                request.workflowKey(),
-                effectiveMessage,
-                request.className(),
-                request.chapterName(),
-                request.additionalDetails()));
+    public RunResponse start(@RequestBody(required = false) StartRunRequest request) {
+        if (request == null) {
+            request = new StartRunRequest(null, "Hello", null, null, null);
+        }
+
+        // 1. If an option or class/chapter context is selected: real query to make something
+        if (request.isRealDocumentQuery()) {
+            String effectiveMessage = request.resolveMessage();
+            return RunResponse.from(engine.start(
+                    request.resolveWorkflowKey(),
+                    effectiveMessage,
+                    request.className(),
+                    request.chapterName(),
+                    request.additionalDetails()));
+        }
+
+        // 2. Rest: for general questions without option or context, route directly to LLM to answer!
+        String query = request.resolveQuestion();
+        String answer = educationalService.answerGeneralQuestion(query);
+
+        WorkflowRun run = runRepository.save(new WorkflowRun("general-qa"));
+        run.complete();
+        runRepository.save(run);
+
+        StageExecution execution = new StageExecution(run.getId(), "direct-answer", 0, 1);
+        String payloadJson = "{}";
+        try {
+            payloadJson = objectMapper.writeValueAsString(Map.of("query", query, "answer", answer, "type", "direct_llm_response"));
+        } catch (Exception ignored) {}
+
+        execution.recordOutcome(answer, payloadJson);
+        execution.approve();
+        executionRepository.save(execution);
+
+        return new RunResponse(
+                run.getId(),
+                "general-qa",
+                RunStatus.COMPLETED,
+                0,
+                1,
+                "direct-answer",
+                "Direct Educational Q&A",
+                answer,
+                Map.of("answer", answer, "type", "direct_llm_response"),
+                true,
+                false);
+    }
+
+    /**
+     * Dedicated direct chat endpoint.
+     * Routes queries with option/context to document workflows, and general questions directly to LLM.
+     */
+    @PostMapping("/chat")
+    public RunResponse chat(@RequestBody(required = false) StartRunRequest request) {
+        return start(request);
     }
 
     /**
@@ -90,6 +161,24 @@ public class WorkflowController {
     public RunResponse send(@PathVariable String runId,
                             @RequestBody(required = false) RunMessageRequest request) {
         String msg = (request != null) ? request.resolveMessage() : "approve";
+
+        Optional<WorkflowRun> runOpt = runRepository.findById(runId);
+        if (runOpt.isPresent() && "general-qa".equals(runOpt.get().getWorkflowKey())) {
+            String answer = educationalService.answerGeneralQuestion(msg);
+            return new RunResponse(
+                    runId,
+                    "general-qa",
+                    RunStatus.COMPLETED,
+                    0,
+                    1,
+                    "direct-answer",
+                    "Direct Educational Q&A",
+                    answer,
+                    Map.of("answer", answer, "type", "direct_llm_response"),
+                    true,
+                    false);
+        }
+
         return RunResponse.from(engine.handleMessage(runId, msg));
     }
 

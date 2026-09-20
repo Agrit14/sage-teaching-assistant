@@ -79,4 +79,13 @@ public class WorkflowCatalog {
                 "Direct PDF Print with Alpha Tutor Template",
                 List.of(printStage));
     }
+
+    /** 5. General Educational Q&A Workflow (Direct LLM answering) */
+    @Bean
+    public WorkflowDefinition generalQaWorkflow(com.sage.teachingassistant.workflow.stage.GeneralQaStage qaStage) {
+        return new WorkflowDefinition(
+                com.sage.teachingassistant.workflow.stage.GeneralQaStage.WORKFLOW_KEY,
+                "General Educational Q&A (Direct LLM)",
+                List.of(qaStage));
+    }
 }

@@ -73,6 +73,8 @@ public class PdfExportService {
      */
     public byte[] exportPdf(String documentType, String requestInfo, String contentBody) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            contentBody = DocxTemplateGenerator.organizeAnswersAtEnd(contentBody);
+
             Document document = new Document(PageSize.A4, MARGIN_LEFT, MARGIN_RIGHT, MARGIN_TOP, MARGIN_BOTTOM);
             PdfWriter writer = PdfWriter.getInstance(document, out);
 
@@ -165,6 +167,9 @@ public class PdfExportService {
 
         // Headings: MUST be bold and centre aligned
         if (isHeadingParagraph(p, text, upper)) {
+            if (upper.contains("ANSWER KEY") || upper.contains("MARKING SCHEME") || upper.contains("SOLUTIONS")) {
+                document.newPage();
+            }
             Paragraph pdfPara = new Paragraph(cleanMarkdown(text), FONT_SECTION);
             pdfPara.setAlignment(Element.ALIGN_CENTER);
             pdfPara.setSpacingBefore(14);
@@ -382,6 +387,9 @@ public class PdfExportService {
                     || upper.startsWith("INSTRUCTION")
                     || upper.startsWith("ANSWER KEY")
                     || upper.startsWith("PRACTICE QUESTION")) {
+                if (upper.contains("ANSWER KEY") || upper.contains("MARKING SCHEME") || upper.contains("SOLUTIONS")) {
+                    document.newPage();
+                }
                 Paragraph p = new Paragraph(cleanMarkdown(line), FONT_SECTION);
                 p.setAlignment(Element.ALIGN_CENTER);
                 p.setSpacingBefore(14);

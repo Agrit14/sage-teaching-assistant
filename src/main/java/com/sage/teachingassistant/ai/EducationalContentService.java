@@ -122,19 +122,22 @@ public class EducationalContentService {
      * Generates full worksheet content based on the approved outline.
      */
     public String generateWorksheetContent(String request, String approvedOutline, String feedback) {
-        String sys = "You are Sage, generating a complete, ready-to-print Alpha Tutor classroom worksheet. "
-                + "Generate high quality questions adhering to the approved outline. Format with clear section headers: "
+        String sys = "You are Sage, generating a complete, ready-to-print classroom worksheet. "
+                + "Generate high quality questions adhering to the approved outline. Format with clear section headers:\n"
                 + "Section A: Multiple Choice Questions (with options A, B, C, D)\n"
                 + "Section B: Fill in the Blanks / Matching\n"
                 + "Section C: Short & Conceptual Questions (with marks specified [2 Marks])\n"
-                + "Provide complete, accurate questions suitable for student practice.";
+                + "CRITICAL FORMATTING RULE FOR ANSWERS: Do NOT include answers, solutions, or explanations immediately after the questions. "
+                + "The student worksheet sections must contain ONLY questions.\n"
+                + "At the very end of the document, provide a dedicated section titled '# ANSWER KEY & SOLUTIONS' "
+                + "containing complete answers, correct options, and brief explanations for every question.";
 
         String prompt = "Topic & Grade: " + request + "\n"
                 + "Approved Outline: " + approvedOutline + "\n";
         if (feedback != null && !feedback.isBlank()) {
             prompt += "Teacher's revision suggestions to incorporate: " + feedback + "\n";
         }
-        prompt += "Generate the full printable worksheet content.";
+        prompt += "Generate the full printable worksheet content. All questions must appear first, and all answers/solutions must be placed exclusively at the end under '# ANSWER KEY & SOLUTIONS'.";
 
         return geminiClient.generate(sys, prompt, false);
     }
@@ -143,17 +146,20 @@ public class EducationalContentService {
      * Generates complete test paper and answer key based on the approved blueprint.
      */
     public String generateTestContent(String request, String approvedBlueprint, String feedback) {
-        String sys = "You are Sage, generating a formal Alpha Tutor Test Examination Paper. "
+        String sys = "You are Sage, generating a formal Test Examination Paper. "
                 + "Include: General Instructions, Section A (Objective Questions), Section B (Short Answer Questions), "
-                + "Section C (Long/Numerical/Application Questions), with marks clearly noted next to each question. "
-                + "At the end, include an Answer Key and Marking Scheme for the teacher.";
+                + "Section C (Long/Numerical/Application Questions), with marks clearly noted next to each question.\n"
+                + "CRITICAL FORMATTING RULE FOR ANSWERS: Do NOT include answers or solutions immediately after each question. "
+                + "All test paper sections must contain ONLY questions for students.\n"
+                + "At the very end of the document, provide a dedicated section titled '# ANSWER KEY & MARKING SCHEME' "
+                + "containing the complete answer key, step-by-step solutions, and marking rubric for the teacher.";
 
         String prompt = "Topic & Grade: " + request + "\n"
                 + "Approved Blueprint: " + approvedBlueprint + "\n";
         if (feedback != null && !feedback.isBlank()) {
             prompt += "Teacher's revision suggestions to incorporate: " + feedback + "\n";
         }
-        prompt += "Generate the complete examination paper and marking rubric.";
+        prompt += "Generate the complete examination paper. All questions must appear first, and all answers and marking scheme must be placed exclusively at the end under '# ANSWER KEY & MARKING SCHEME'.";
 
         return geminiClient.generate(sys, prompt, false);
     }
@@ -173,6 +179,21 @@ public class EducationalContentService {
         }
         prompt += "Generate the full detailed revision notes.";
 
+        return geminiClient.generate(sys, prompt, false);
+    }
+
+    /**
+     * Answers general questions or educational inquiries directly using the LLM.
+     * Used when the user asks a question without selecting an option (worksheet/test/notes)
+     * or without structured document context.
+     */
+    public String answerGeneralQuestion(String question) {
+        String sys = "You are Sage, an intelligent, helpful, and friendly AI Teaching Assistant. "
+                + "Answer the user's question clearly, accurately, and educationally. "
+                + "Provide explanations, formulas, definitions, or examples where appropriate. "
+                + "Use clean formatting such as bullet points and bold key terms to make the response engaging.";
+
+        String prompt = (question != null && !question.isBlank()) ? question.trim() : "Hello! How can I assist you with your studies today?";
         return geminiClient.generate(sys, prompt, false);
     }
 }

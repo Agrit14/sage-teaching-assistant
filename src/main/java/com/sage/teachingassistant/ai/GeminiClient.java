@@ -170,28 +170,35 @@ public class GeminiClient {
     }
 
     private String generateMock(String prompt) {
-        String topic = "Classroom Curriculum";
-        if (prompt != null && prompt.contains("Chapter")) {
-            topic = prompt.substring(prompt.indexOf("Chapter")).split("\n")[0].trim();
+        if (prompt != null && (prompt.contains("3 required sections") || prompt.contains("Reference Web Links") || prompt.contains("Target Class/Grade"))) {
+            String topic = "Classroom Curriculum";
+            if (prompt.contains("Chapter")) {
+                topic = prompt.substring(prompt.indexOf("Chapter")).split("\n")[0].trim();
+            }
+
+            return """
+                    ### 1. 🔍 Brief Information Found on the Web
+                    • **Curriculum Standards**: Aligned with the latest CBSE / NCERT Secondary Curriculum guidelines.
+                    • **Key Syllabus Topics**: Core conceptual definitions, essential formulas, and standard problem-solving patterns.
+                    • **Blueprint & Weightage**: Balanced mix of objective MCQs, short conceptual questions, and application/numerical problems.
+                    • **Difficulty Level**: Structured progression from foundational recall to application and higher-order thinking (HOTS).
+
+                    ### 2. 🌐 Reference Web Links
+                    • [NCERT Official Textbooks Portal](https://ncert.nic.in/textbook.php)
+                    • [CBSE Secondary Curriculum & Sample Papers](https://cbseacademic.nic.in/curriculum_2025.html)
+                    • [NCERT Exemplar Practice Problems](https://ncert.nic.in/exemplar-problems.php)
+                    • [Khan Academy Comprehensive Curriculum Lessons](https://www.khanacademy.org)
+
+                    ### 3. ❓ Confirmation & Next Step
+                    This is what I found on the web for %s.
+                    Are you sure you want to go with it?
+
+                    Click **Confirm** (or reply "yes") to proceed and generate the Word (.docx) document, or reply with what you'd like to adjust.""".formatted(topic);
         }
 
-        return """
-                ### 1. 🔍 Brief Information Found on the Web
-                • **Curriculum Standards**: Aligned with the latest CBSE / NCERT Secondary Curriculum guidelines.
-                • **Key Syllabus Topics**: Core conceptual definitions, essential formulas, and standard problem-solving patterns.
-                • **Blueprint & Weightage**: Balanced mix of objective MCQs, short conceptual questions, and application/numerical problems.
-                • **Difficulty Level**: Structured progression from foundational recall to application and higher-order thinking (HOTS).
-
-                ### 2. 🌐 Reference Web Links
-                • [NCERT Official Textbooks Portal](https://ncert.nic.in/textbook.php)
-                • [CBSE Secondary Curriculum & Sample Papers](https://cbseacademic.nic.in/curriculum_2025.html)
-                • [NCERT Exemplar Practice Problems](https://ncert.nic.in/exemplar-problems.php)
-                • [Khan Academy Comprehensive Curriculum Lessons](https://www.khanacademy.org)
-
-                ### 3. ❓ Confirmation & Next Step
-                This is what I found on the web for %s.
-                Are you sure you want to go with it?
-
-                Click **Confirm** (or reply "yes") to proceed and generate the Word (.docx) document, or reply with what you'd like to adjust.""".formatted(topic);
+        return "Here is the answer to your question:\n\n"
+                + "• **Topic Summary**: " + (prompt != null ? prompt : "General Educational Inquiry") + "\n"
+                + "• **Explanation**: Core educational and scientific principles apply directly to this question. "
+                + "Step-by-step reasoning, clear definitions, and relevant examples provide a complete understanding.";
     }
 }
