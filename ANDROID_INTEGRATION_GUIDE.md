@@ -30,19 +30,22 @@ The app should present 4 primary action cards/buttons:
 
 ## 3. STEP-BY-STEP CONVERSATIONAL WORKFLOW
 
-### STEP 1: Starting a Workflow Run
-When the user picks an option and inputs the Class & Topic (e.g., "Class 9 Physics - Laws of Motion"):
+### STEP 1: Starting a Workflow Run with Structured Inputs
+When the user picks an option (Worksheet, Test, or Notes) from the chatbot or dashboard, send the Class, Chapter, and any Additional Context:
 
 - **Endpoint**: `POST /api/v1/workflows/runs`
 - **Headers**: `Content-Type: application/json`
-- **Request Body**:
+- **Request Body (Structured Form or Chatbot)**:
 ```json
 {
   "workflowKey": "worksheet-generation",
-  "message": "Class 9 Physics - Laws of Motion"
+  "className": "Class 10",
+  "chapterName": "Light - Reflection and Refraction",
+  "additionalDetails": "Include ray diagram concepts, mirror formula numericals, and CBSE board pattern questions"
 }
 ```
-*(Valid workflowKey values: "worksheet-generation", "test-generation", "notes-generation", "pdf-print")*
+*(You can also optionally supply `"message"` directly, or use `"className"`, `"chapterName"`, and `"additionalDetails"`).*
+*(Valid `workflowKey` values: `"worksheet-generation"`, `"test-generation"`, `"notes-generation"`, `"pdf-print"`).*
 
 - **Response Body (200 OK)**:
 ```json
@@ -54,42 +57,85 @@ When the user picks an option and inputs the Class & Topic (e.g., "Class 9 Physi
   "stageCount": 3,
   "stageKey": "worksheet-research",
   "stageName": "Worksheet Topic & Curriculum Research",
-  "message": "I've researched the curriculum and prepared the proposed Worksheet Outline for: ... Is this right? Say 'yes' to proceed...",
+  "message": "### 1. 🔍 Brief Information Found on the Web\n- CBSE/NCERT curriculum scope...\n\n### 2. 🌐 Reference Web Links\n- https://ncert.nic.in/...\n- https://cbseacademic.nic.in/...\n\n### 3. ❓ Confirmation & Next Step\nThis is what I found on the web for Class 10 - Light. Are you sure you want to go with it?\nClick Confirm to generate the Word document, or reply with what you'd like to adjust.",
   "output": {
-    "research.confirmedOutline": "..."
+    "topic.className": "Class 10",
+    "topic.chapterName": "Light - Reflection and Refraction",
+    "stage.canConfirm": "true",
+    "stage.action": "confirm_outline"
   },
   "completed": false
 }
 ```
-**UI Behavior**: Display `message` to the user with two options:
-1. An **"Approve / Continue"** button (sends `"yes"`).
-2. A **Feedback text box** with a **"Revise"** button (sends custom feedback).
+
+**UI Display for Stage 1**:
+- Display the 3 items returned in `message`:
+  1. **Brief Information** from the web.
+  2. **Reference Web Links** (clickable links for user to verify).
+  3. **Confirmation Question**.
+- Show two primary UI elements:
+  1. A **Confirm** button (calls the 1-click `/confirm` endpoint or sends `"confirm"`).
+  2. An **Adjust / Feedback** text field (e.g. "change difficulty to hard").
 
 ---
 
-### STEP 2: Moving the Workflow (Approval or Revision)
-Every interaction from the user after the run starts is sent through this single endpoint:
+### STEP 2: Advancing Stages with the "Confirm" Button or Messages
 
+Each stage has an active confirmation action. When the user reviews the information and is happy, they can confirm to move forward.
+
+#### Option A: 1-Click Confirm Button (Recommended)
+Simply hit the dedicated confirm endpoint:
+- **Endpoint**: `POST /api/v1/workflows/runs/{runId}/confirm`
+- **Method**: `POST` (empty body)
+
+#### Option B: Chatbot Message Approval
+Or send a message payload:
 - **Endpoint**: `POST /api/v1/workflows/runs/{runId}/messages`
-- **Headers**: `Content-Type: application/json`
-
-#### Option A: Approving the current stage (advance to next stage)
+- **Request Body**:
 ```json
 {
-  "message": "yes"
+  "message": "confirm"
 }
 ```
-- When approving Stage 0 (Research) -> advances to Stage 1 (creates Word .docx draft).
-- When approving Stage 1 (Word Draft) -> advances to Stage 2 (exports final PDF).
-- When approving Stage 2 (PDF Export) -> completes the workflow (`"completed": true`).
+*(Keywords recognized as approval: `"confirm"`, `"confirmed"`, `"yes"`, `"approve"`, `"proceed"`).*
 
-#### Option B: Requesting Changes / Revisions (loops back current stage)
+#### Option C: Asking for Changes / Revisions (Iterative Feedback)
+If the user wants adjustments:
+- **Endpoint**: `POST /api/v1/workflows/runs/{runId}/messages`
+- **Request Body**:
 ```json
 {
-  "message": "Please add 4 numerical problems on momentum and force."
+  "message": "Please add 5 more numerical questions and include lens power formula."
 }
 ```
-Sage will re-execute the stage, incorporate the feedback, update the document, and return the new draft for confirmation.
+Sage will re-execute the stage, incorporate the feedback, and return the revised proposal with the updated details.
+
+---
+
+### STEP 3: Stage 2 — Word Document (.docx) Generation & Review
+
+Once Stage 1 is confirmed, Sage enters Stage 2:
+- Generates the `.docx` document and provides the download link.
+- Returns a summary of the generated document content.
+- Asks the user to review the Word file.
+
+**UI Actions**:
+1. Provide a download button for the Word document: `GET /api/v1/workflows/runs/{runId}/files/docx`.
+2. Allow user to send changes/revision text if needed.
+3. Display the **Confirm** button: clicking it advances to Stage 3 (Final PDF).
+
+---
+
+### STEP 4: Stage 3 — Final Branded Alpha Tutor PDF Export
+
+Once Stage 2 is confirmed:
+- Sage compiles the approved Word document into the authentic Alpha Tutor PDF template:
+  - Header with Alpha Tutor logo & golden accent line (`#F4B300`).
+  - Centered bold titles & organized question tables.
+  - Authentic footer on every page (dark green `#075D2A` & red `#D6181F`).
+- Endpoint to download or view the PDF:
+  `GET /api/v1/workflows/runs/{runId}/files/pdf`
+- User can click **Confirm** to complete and close the run.
 
 ---
 
@@ -153,7 +199,10 @@ import retrofit2.http.*
 
 data class StartRunRequest(
     val workflowKey: String,
-    val message: String
+    val message: String? = null,
+    val className: String? = null,
+    val chapterName: String? = null,
+    val additionalDetails: String? = null
 )
 
 data class MessageRequest(
@@ -179,26 +228,32 @@ data class RunResponse(
 
 interface SageApiService {
 
-    // 1. Start a new run
+    // 1. Start a new run with topic details
     @POST("/api/v1/workflows/runs")
     suspend fun startRun(
         @Body request: StartRunRequest
     ): Response<RunResponse>
 
-    // 2. Send 'yes' (approval) or user feedback
+    // 2. 1-Click Confirm current stage (advances to next stage)
+    @POST("/api/v1/workflows/runs/{runId}/confirm")
+    suspend fun confirmStage(
+        @Path("runId") runId: String
+    ): Response<RunResponse>
+
+    // 3. Send feedback revision or chat approval
     @POST("/api/v1/workflows/runs/{runId}/messages")
     suspend fun sendMessage(
         @Path("runId") runId: String,
         @Body request: MessageRequest
     ): Response<RunResponse>
 
-    // 3. Check current run status and stage
+    // 4. Check current run status and stage
     @GET("/api/v1/workflows/runs/{runId}")
     suspend fun getRunDetail(
         @Path("runId") runId: String
     ): Response<RunResponse>
 
-    // 4. Download Word .docx file
+    // 5. Download Word .docx file
     @Streaming
     @GET("/api/v1/workflows/runs/{runId}/files/docx")
     suspend fun downloadDocx(

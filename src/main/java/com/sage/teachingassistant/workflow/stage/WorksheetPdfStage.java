@@ -77,10 +77,10 @@ public class WorksheetPdfStage implements WorkflowStage {
                 Your Alpha Tutor Worksheet is ready!
                 The approved Word draft has been converted into the branded PDF.
 
-                Final PDF File: Alpha_Tutor_Worksheet_%s.pdf
-                Download Link: %s
+                📄 Final PDF File: Alpha_Tutor_Worksheet_%s.pdf
+                📥 Download / View Link: %s
 
-                Say "yes" to mark this run complete and save all files.""".formatted(
+                Click **Confirm** (or reply "yes") to mark this run complete and save all files.""".formatted(
                 context.runId().substring(0, 8),
                 downloadUrl);
 
@@ -88,6 +88,8 @@ public class WorksheetPdfStage implements WorkflowStage {
         output.put(WorkflowPayload.FINAL_PDF, pdfPathStr);
         output.put(WorkflowPayload.PDF_FILE_PATH, pdfPathStr);
         output.put(WorkflowPayload.PDF_DOWNLOAD_URL, downloadUrl);
+        output.put(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
+        output.put(WorkflowPayload.STAGE_ACTION, "complete_run");
         output.put("worksheet.pdf.attempt", String.valueOf(context.attempt()));
 
         return StageResult.of(message, output);

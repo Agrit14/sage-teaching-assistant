@@ -3,6 +3,7 @@ package com.sage.teachingassistant.workflow.stage;
 import com.sage.teachingassistant.ai.EducationalContentService;
 import com.sage.teachingassistant.workflow.StageContext;
 import com.sage.teachingassistant.workflow.StageResult;
+import com.sage.teachingassistant.workflow.TopicContext;
 import com.sage.teachingassistant.workflow.WorkflowPayload;
 import com.sage.teachingassistant.workflow.WorkflowStage;
 import org.springframework.stereotype.Component;
@@ -39,30 +40,24 @@ public class WorksheetResearchStage implements WorkflowStage {
 
     @Override
     public StageResult execute(StageContext context) {
-        String userInput = context.latestUserInput() != null ? context.latestUserInput().strip() : "";
-        String priorRequest = context.priorOutput(WorkflowPayload.CONFIRMED_REQUEST);
-        String activeTopic = priorRequest != null && !priorRequest.isBlank() ? priorRequest : userInput;
+        TopicContext topic = TopicContext.resolve(context);
 
-        String outline = educationalService.researchWorksheetOutline(activeTopic, context.feedback());
-
-        String message = """
-                I've researched the curriculum and prepared the proposed Worksheet Outline for:
-                "%s"
-
-                ---
-                %s
-                ---
-
-                Is this right?
-                • Say "yes" to proceed and generate the Word document.
-                • Or reply with what you'd like to adjust (e.g., "add 5 more numerical questions", "make it for Class 10 CBSE").""".formatted(
-                activeTopic, outline);
+        String researchResult = educationalService.researchWorksheetOutline(
+                topic.className(),
+                topic.chapterName(),
+                topic.additionalDetails(),
+                context.feedback());
 
         Map<String, String> output = new LinkedHashMap<>();
-        output.put(WorkflowPayload.CONFIRMED_REQUEST, activeTopic);
-        output.put(WorkflowPayload.CONFIRMED_OUTLINE, outline);
+        output.put(WorkflowPayload.TOPIC_CLASS, topic.className());
+        output.put(WorkflowPayload.TOPIC_CHAPTER, topic.chapterName());
+        output.put(WorkflowPayload.TOPIC_DETAILS, topic.additionalDetails());
+        output.put(WorkflowPayload.CONFIRMED_REQUEST, topic.formattedTitle());
+        output.put(WorkflowPayload.CONFIRMED_OUTLINE, researchResult);
+        output.put(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
+        output.put(WorkflowPayload.STAGE_ACTION, "confirm_outline");
         output.put("worksheet.attempt", String.valueOf(context.attempt()));
 
-        return StageResult.of(message, output);
+        return StageResult.of(researchResult, output);
     }
 }

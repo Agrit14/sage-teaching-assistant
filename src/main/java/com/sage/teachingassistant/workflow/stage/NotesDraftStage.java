@@ -80,16 +80,16 @@ public class NotesDraftStage implements WorkflowStage {
 
         String message = """
                 The Alpha Tutor Revision Notes Word document has been generated!%s
-                Document: Alpha_Tutor_Notes_%s.docx
-                Download link: %s
+                📄 Word Document: Alpha_Tutor_Notes_%s.docx
+                📥 Download link: %s
 
                 --- Summary of Revision Notes ---
                 %s
                 ----------------------------------
 
                 Please review the notes:
-                • Say "yes" to export the final PDF with Alpha Tutor branding.
-                • Or tell me what points to add, simplify, or rephrase.""".formatted(
+                • Click **Confirm** (or reply "yes") to export the final PDF with Alpha Tutor branding.
+                • Or reply with what points to add, simplify, or rephrase.""".formatted(
                 revisionNote,
                 context.runId().substring(0, 8),
                 downloadUrl,
@@ -101,6 +101,8 @@ public class NotesDraftStage implements WorkflowStage {
         output.put(WorkflowPayload.DRAFT_DOCUMENT, docxPathStr);
         output.put(WorkflowPayload.DOCX_FILE_PATH, docxPathStr);
         output.put(WorkflowPayload.DOCX_DOWNLOAD_URL, downloadUrl);
+        output.put(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
+        output.put(WorkflowPayload.STAGE_ACTION, "confirm_docx");
         output.put("notes.draft.attempt", String.valueOf(context.attempt()));
 
         return StageResult.of(message, output);

@@ -56,11 +56,27 @@ public class WorkflowEngine {
 
     /** Creates a run and executes its first stage. */
     public WorkflowTurn start(String workflowKey, String message) {
+        return start(workflowKey, message, null, null, null);
+    }
+
+    /** Creates a run with initial topic metadata and executes its first stage. */
+    public WorkflowTurn start(String workflowKey, String message, String className, String chapterName, String additionalDetails) {
         WorkflowDefinition definition = registry.require(workflowKey);
         WorkflowRun run = runRepository.save(new WorkflowRun(workflowKey));
         log.info("Run {} started on workflow '{}'", run.getId(), workflowKey);
 
-        return runStage(run, definition, 0, message, null);
+        Map<String, String> seedOutputs = new LinkedHashMap<>();
+        if (className != null && !className.isBlank()) {
+            seedOutputs.put(WorkflowPayload.TOPIC_CLASS, className.trim());
+        }
+        if (chapterName != null && !chapterName.isBlank()) {
+            seedOutputs.put(WorkflowPayload.TOPIC_CHAPTER, chapterName.trim());
+        }
+        if (additionalDetails != null && !additionalDetails.isBlank()) {
+            seedOutputs.put(WorkflowPayload.TOPIC_DETAILS, additionalDetails.trim());
+        }
+
+        return runStage(run, definition, 0, message, null, seedOutputs);
     }
 
     /**
@@ -151,6 +167,12 @@ public class WorkflowEngine {
 
     private WorkflowTurn runStage(WorkflowRun run, WorkflowDefinition definition,
                                   int index, String userMessage, String feedback) {
+        return runStage(run, definition, index, userMessage, feedback, null);
+    }
+
+    private WorkflowTurn runStage(WorkflowRun run, WorkflowDefinition definition,
+                                  int index, String userMessage, String feedback,
+                                  Map<String, String> seedOutputs) {
 
         WorkflowStage stage = definition.stageAt(index);
         int attempt = (int) executionRepository.countByRunIdAndStageKey(run.getId(), stage.key()) + 1;
@@ -159,13 +181,18 @@ public class WorkflowEngine {
         execution.setUserMessage(userMessage);
         execution.setFeedback(feedback);
 
+        Map<String, String> prior = new LinkedHashMap<>(priorOutputs(run.getId(), index));
+        if (seedOutputs != null && !seedOutputs.isEmpty()) {
+            prior.putAll(seedOutputs);
+        }
+
         StageContext context = new StageContext(
                 run.getId(),
                 run.getWorkflowKey(),
                 userMessage,
                 feedback,
                 attempt,
-                priorOutputs(run.getId(), index));
+                prior);
 
         // Runs with no transaction open, on purpose.
         StageResult result = stage.execute(context);

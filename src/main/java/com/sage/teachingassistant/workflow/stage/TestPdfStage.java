@@ -77,10 +77,10 @@ public class TestPdfStage implements WorkflowStage {
                 Your Alpha Tutor Test Examination Paper is ready!
                 The approved Word draft has been compiled into the print-ready PDF.
 
-                Final PDF File: Alpha_Tutor_Test_%s.pdf
-                Download Link: %s
+                📄 Final PDF File: Alpha_Tutor_Test_%s.pdf
+                📥 Download / View Link: %s
 
-                Say "yes" to complete the examination workflow.""".formatted(
+                Click **Confirm** (or reply "yes") to finalize and complete this test examination workflow.""".formatted(
                 context.runId().substring(0, 8),
                 downloadUrl);
 
@@ -88,6 +88,8 @@ public class TestPdfStage implements WorkflowStage {
         output.put(WorkflowPayload.FINAL_PDF, pdfPathStr);
         output.put(WorkflowPayload.PDF_FILE_PATH, pdfPathStr);
         output.put(WorkflowPayload.PDF_DOWNLOAD_URL, downloadUrl);
+        output.put(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
+        output.put(WorkflowPayload.STAGE_ACTION, "complete_run");
         output.put("test.pdf.attempt", String.valueOf(context.attempt()));
 
         return StageResult.of(message, output);

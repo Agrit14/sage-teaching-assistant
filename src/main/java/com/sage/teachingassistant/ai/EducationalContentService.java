@@ -16,58 +16,106 @@ public class EducationalContentService {
     }
 
     /**
-     * Researches curriculum and proposes a structured outline for a Worksheet.
+     * Researches curriculum on the live web and proposes a structured outline for a Worksheet.
      */
-    public String researchWorksheetOutline(String request, String feedback) {
+    public String researchWorksheetOutline(String className, String chapterName, String additionalDetails, String feedback) {
         String sys = "You are Sage, an expert educational curriculum specialist and teaching assistant. "
-                + "Your task is to analyze the user's requested topic and class/grade, search for standard curriculum guidelines "
-                + "(e.g., NCERT, CBSE, ICSE, or general educational standards), and propose a structured worksheet outline. "
-                + "Specify target grade level, key concepts tested, and recommended question types (MCQs, Fill in the blanks, Short Answer, Conceptual Questions). "
-                + "Keep the outline clear, concise, and structured so the teacher can easily approve or adjust it.";
+                + "You MUST search the live web for the latest curriculum guidelines, syllabus topics, and textbook material "
+                + "(e.g., NCERT, CBSE, ICSE, or general educational boards) for the specified class, chapter, and details.\n\n"
+                + "You MUST organize your response into the following 3 distinct sections:\n\n"
+                + "### 1. 🔍 Brief Information Found on the Web\n"
+                + "- Syllabus scope, key learning objectives, and core concepts for this chapter.\n"
+                + "- Essential formulas, definitions, and problem patterns identified on the web.\n"
+                + "- Recommended question types (MCQs, Short Answer, Conceptual, Numericals) and mark distribution.\n\n"
+                + "### 2. 🌐 Reference Web Links\n"
+                + "- Provide direct, valid web links found on the web (e.g., NCERT official digital textbooks, CBSE curriculum portals, Khan Academy, or standard study portals).\n\n"
+                + "### 3. ❓ Confirmation & Next Step\n"
+                + "- Conclude by asking: 'This is what I found on the web for " + className + " - " + chapterName + ". Are you sure you want to go with it?\n\n"
+                + "Click **Confirm** (or reply \"yes\") to proceed and generate the Word (.docx) document, or reply with what you'd like to adjust.'";
 
-        String prompt = "User request: \"" + request + "\"\n";
-        if (feedback != null && !feedback.isBlank()) {
-            prompt += "Previous feedback/adjustment requested: \"" + feedback.trim() + "\"\n";
+        String prompt = "Target Class/Grade: " + className + "\n"
+                + "Chapter / Subject Topic: " + chapterName + "\n";
+        if (additionalDetails != null && !additionalDetails.isBlank()) {
+            prompt += "Additional Context / Requirements: " + additionalDetails.trim() + "\n";
         }
-        prompt += "Provide the curriculum-grounded topic summary and question blueprint for confirmation.";
+        if (feedback != null && !feedback.isBlank()) {
+            prompt += "User's previous revision request: " + feedback.trim() + "\n";
+        }
+        prompt += "Search the web and provide the 3 required sections: Brief Information, Reference Web Links, and Confirmation Prompt.";
 
         return geminiClient.generate(sys, prompt, true);
     }
 
+    public String researchWorksheetOutline(String request, String feedback) {
+        return researchWorksheetOutline("Target Class", request, "", feedback);
+    }
+
     /**
-     * Researches curriculum and proposes a blueprint for a Test Paper.
+     * Researches curriculum on the live web and proposes a blueprint for a Test Paper.
      */
-    public String researchTestBlueprint(String request, String feedback) {
+    public String researchTestBlueprint(String className, String chapterName, String additionalDetails, String feedback) {
         String sys = "You are Sage, an expert exam creator and teaching assistant. "
-                + "Analyze the topic, target class/grade, and propose a complete Test Paper Blueprint including: "
-                + "Total Marks, Time Duration, Section Breakdown (Section A: 1-mark objective/MCQ, Section B: 3-mark short answer, Section C: 5-mark long answer/application), "
-                + "and key topics covered in each section according to standard curriculum guidelines.";
+                + "You MUST search the live web for the latest examination patterns, sample papers, and syllabus guidelines "
+                + "(e.g., NCERT, CBSE, ICSE, or general educational boards) for the specified class and chapter.\n\n"
+                + "You MUST organize your response into the following 3 distinct sections:\n\n"
+                + "### 1. 🔍 Brief Information Found on the Web\n"
+                + "- Test examination blueprint: Total Marks, Time Duration, and Section Breakdown (Section A: Objective/MCQ, Section B: Short Answer, Section C: Long/Numerical).\n"
+                + "- Topic-wise marks weightage and difficulty level (Foundational / Moderate / HOTS).\n\n"
+                + "### 2. 🌐 Reference Web Links\n"
+                + "- Provide direct, valid web links found on the web (e.g. CBSE sample question papers, NCERT official textbook, standard curriculum portals).\n\n"
+                + "### 3. ❓ Confirmation & Next Step\n"
+                + "- Conclude by asking: 'This is what I found on the web for " + className + " - " + chapterName + ". Are you sure you want to go with it?\n\n"
+                + "Click **Confirm** (or reply \"yes\") to proceed and generate the Word (.docx) document, or reply with what you'd like to adjust.'";
 
-        String prompt = "User request: \"" + request + "\"\n";
-        if (feedback != null && !feedback.isBlank()) {
-            prompt += "Previous feedback/adjustment requested: \"" + feedback.trim() + "\"\n";
+        String prompt = "Target Class/Grade: " + className + "\n"
+                + "Chapter / Subject Topic: " + chapterName + "\n";
+        if (additionalDetails != null && !additionalDetails.isBlank()) {
+            prompt += "Additional Context / Requirements: " + additionalDetails.trim() + "\n";
         }
-        prompt += "Provide the test blueprint and syllabus topics for teacher confirmation.";
+        if (feedback != null && !feedback.isBlank()) {
+            prompt += "User's previous revision request: " + feedback.trim() + "\n";
+        }
+        prompt += "Search the web and provide the 3 required sections: Brief Information, Reference Web Links, and Confirmation Prompt.";
 
         return geminiClient.generate(sys, prompt, true);
     }
 
-    /**
-     * Researches curriculum and proposes a structured outline for Revision Notes.
-     */
-    public String researchNotesOutline(String request, String feedback) {
-        String sys = "You are Sage, an expert academic writer and teaching assistant. "
-                + "Analyze the topic and class/grade, and propose an outline for comprehensive revision notes: "
-                + "Major concepts, core formulas/laws, key diagrams or comparison tables, and summary takeaways. "
-                + "Keep it structured so the teacher can confirm whether the scope matches their syllabus.";
+    public String researchTestBlueprint(String request, String feedback) {
+        return researchTestBlueprint("Target Class", request, "", feedback);
+    }
 
-        String prompt = "User request: \"" + request + "\"\n";
-        if (feedback != null && !feedback.isBlank()) {
-            prompt += "Previous feedback/adjustment requested: \"" + feedback.trim() + "\"\n";
+    /**
+     * Researches curriculum on the live web and proposes a structured outline for Revision Notes.
+     */
+    public String researchNotesOutline(String className, String chapterName, String additionalDetails, String feedback) {
+        String sys = "You are Sage, an expert academic author and teaching assistant. "
+                + "You MUST search the live web for comprehensive study notes and textbook materials "
+                + "(e.g., NCERT, CBSE, ICSE) for the specified class and chapter.\n\n"
+                + "You MUST organize your response into the following 3 distinct sections:\n\n"
+                + "### 1. 🔍 Brief Information Found on the Web\n"
+                + "- Scope of revision notes: Core definitions, laws/theorems, formulas, and comparison tables.\n"
+                + "- Key diagrams, memory tips, and common exam traps/misconceptions.\n\n"
+                + "### 2. 🌐 Reference Web Links\n"
+                + "- Provide direct, valid web links found on the web (e.g. NCERT textbooks, syllabus portals, Khan Academy).\n\n"
+                + "### 3. ❓ Confirmation & Next Step\n"
+                + "- Conclude by asking: 'This is what I found on the web for " + className + " - " + chapterName + ". Are you sure you want to go with it?\n\n"
+                + "Click **Confirm** (or reply \"yes\") to proceed and generate the Word (.docx) document, or reply with what you'd like to adjust.'";
+
+        String prompt = "Target Class/Grade: " + className + "\n"
+                + "Chapter / Subject Topic: " + chapterName + "\n";
+        if (additionalDetails != null && !additionalDetails.isBlank()) {
+            prompt += "Additional Context / Requirements: " + additionalDetails.trim() + "\n";
         }
-        prompt += "Provide the revision notes outline for confirmation.";
+        if (feedback != null && !feedback.isBlank()) {
+            prompt += "User's previous revision request: " + feedback.trim() + "\n";
+        }
+        prompt += "Search the web and provide the 3 required sections: Brief Information, Reference Web Links, and Confirmation Prompt.";
 
         return geminiClient.generate(sys, prompt, true);
+    }
+
+    public String researchNotesOutline(String request, String feedback) {
+        return researchNotesOutline("Target Class", request, "", feedback);
     }
 
     /**

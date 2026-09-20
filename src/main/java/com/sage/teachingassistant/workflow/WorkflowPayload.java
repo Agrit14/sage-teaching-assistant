@@ -41,4 +41,16 @@ public final class WorkflowPayload {
 
     /** Stage 3 output: relative download URL for the final PDF. */
     public static final String PDF_DOWNLOAD_URL = "template.pdfDownloadUrl";
+
+    /** Topic input details */
+    public static final String TOPIC_CLASS = "topic.className";
+    public static final String TOPIC_CHAPTER = "topic.chapterName";
+    public static final String TOPIC_DETAILS = "topic.additionalDetails";
+
+    /** Web links found during research stage */
+    public static final String RESEARCH_LINKS = "research.links";
+
+    /** Interactive stage action indicators for UI buttons (Confirm / Edit) */
+    public static final String STAGE_CAN_CONFIRM = "stage.canConfirm";
+    public static final String STAGE_ACTION = "stage.action";
 }

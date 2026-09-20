@@ -123,7 +123,8 @@ public class GeminiClient {
             JsonNode root = objectMapper.readTree(responseBody);
             JsonNode candidates = root.path("candidates");
             if (candidates.isArray() && !candidates.isEmpty()) {
-                JsonNode parts = candidates.get(0).path("content").path("parts");
+                JsonNode candidate = candidates.get(0);
+                JsonNode parts = candidate.path("content").path("parts");
                 if (parts.isArray() && !parts.isEmpty()) {
                     StringBuilder sb = new StringBuilder();
                     for (JsonNode part : parts) {
@@ -131,7 +132,34 @@ public class GeminiClient {
                             sb.append(part.get("text").asText());
                         }
                     }
-                    return sb.toString().trim();
+
+                    String mainContent = sb.toString().trim();
+
+                    // Check if search grounding metadata returned real web links
+                    JsonNode grounding = candidate.path("groundingMetadata");
+                    if (!grounding.isMissingNode()) {
+                        JsonNode chunks = grounding.path("groundingChunks");
+                        if (chunks.isArray() && !chunks.isEmpty()) {
+                            java.util.List<String> links = new java.util.ArrayList<>();
+                            for (JsonNode chunk : chunks) {
+                                JsonNode web = chunk.path("web");
+                                String uri = web.path("uri").asText(null);
+                                String title = web.path("title").asText(null);
+                                if (uri != null && !uri.isBlank()) {
+                                    String label = (title != null && !title.isBlank()) ? title.trim() : uri.trim();
+                                    String linkLine = "• [" + label + "](" + uri.trim() + ")";
+                                    if (!links.contains(linkLine) && !mainContent.contains(uri.trim())) {
+                                        links.add(linkLine);
+                                    }
+                                }
+                            }
+                            if (!links.isEmpty() && !mainContent.contains("Reference Web Links")) {
+                                mainContent += "\n\n### 2. 🌐 Reference Web Links\n" + String.join("\n", links);
+                            }
+                        }
+                    }
+
+                    return mainContent;
                 }
             }
         } catch (Exception e) {
@@ -142,18 +170,28 @@ public class GeminiClient {
     }
 
     private String generateMock(String prompt) {
+        String topic = "Classroom Curriculum";
+        if (prompt != null && prompt.contains("Chapter")) {
+            topic = prompt.substring(prompt.indexOf("Chapter")).split("\n")[0].trim();
+        }
+
         return """
-                **Topic Overview & Learning Objectives:**
-                - Core principles and definitions for the requested grade level.
-                - Conceptual framework aligned with curriculum standards (CBSE/ICSE/NCERT).
-                - Real-world applications and key problem-solving formulas.
-                
-                **Key Sections to Cover:**
-                1. Fundamental Concepts & Key Terms
-                2. Step-by-Step Explanations & Examples
-                3. High-Yield Practice Questions / Exercises
-                4. Self-Assessment & Summary Notes
-                
-                [Generated via Sage Teaching Assistant]""";
+                ### 1. 🔍 Brief Information Found on the Web
+                • **Curriculum Standards**: Aligned with the latest CBSE / NCERT Secondary Curriculum guidelines.
+                • **Key Syllabus Topics**: Core conceptual definitions, essential formulas, and standard problem-solving patterns.
+                • **Blueprint & Weightage**: Balanced mix of objective MCQs, short conceptual questions, and application/numerical problems.
+                • **Difficulty Level**: Structured progression from foundational recall to application and higher-order thinking (HOTS).
+
+                ### 2. 🌐 Reference Web Links
+                • [NCERT Official Textbooks Portal](https://ncert.nic.in/textbook.php)
+                • [CBSE Secondary Curriculum & Sample Papers](https://cbseacademic.nic.in/curriculum_2025.html)
+                • [NCERT Exemplar Practice Problems](https://ncert.nic.in/exemplar-problems.php)
+                • [Khan Academy Comprehensive Curriculum Lessons](https://www.khanacademy.org)
+
+                ### 3. ❓ Confirmation & Next Step
+                This is what I found on the web for %s.
+                Are you sure you want to go with it?
+
+                Click **Confirm** (or reply "yes") to proceed and generate the Word (.docx) document, or reply with what you'd like to adjust.""".formatted(topic);
     }
 }

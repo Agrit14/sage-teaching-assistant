@@ -77,10 +77,10 @@ public class NotesPdfStage implements WorkflowStage {
                 Your Alpha Tutor Revision Notes PDF is ready!
                 The approved Word document has been compiled into the branded study guide.
 
-                Final PDF File: Alpha_Tutor_Notes_%s.pdf
-                Download Link: %s
+                📄 Final PDF File: Alpha_Tutor_Notes_%s.pdf
+                📥 Download / View Link: %s
 
-                Say "yes" to mark this revision notes run complete.""".formatted(
+                Click **Confirm** (or reply "yes") to finalize and mark this revision notes run complete.""".formatted(
                 context.runId().substring(0, 8),
                 downloadUrl);
 
@@ -88,6 +88,8 @@ public class NotesPdfStage implements WorkflowStage {
         output.put(WorkflowPayload.FINAL_PDF, pdfPathStr);
         output.put(WorkflowPayload.PDF_FILE_PATH, pdfPathStr);
         output.put(WorkflowPayload.PDF_DOWNLOAD_URL, downloadUrl);
+        output.put(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
+        output.put(WorkflowPayload.STAGE_ACTION, "complete_run");
         output.put("notes.pdf.attempt", String.valueOf(context.attempt()));
 
         return StageResult.of(message, output);

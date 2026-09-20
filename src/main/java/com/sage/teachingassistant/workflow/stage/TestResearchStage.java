@@ -3,6 +3,7 @@ package com.sage.teachingassistant.workflow.stage;
 import com.sage.teachingassistant.ai.EducationalContentService;
 import com.sage.teachingassistant.workflow.StageContext;
 import com.sage.teachingassistant.workflow.StageResult;
+import com.sage.teachingassistant.workflow.TopicContext;
 import com.sage.teachingassistant.workflow.WorkflowPayload;
 import com.sage.teachingassistant.workflow.WorkflowStage;
 import org.springframework.stereotype.Component;
@@ -39,30 +40,24 @@ public class TestResearchStage implements WorkflowStage {
 
     @Override
     public StageResult execute(StageContext context) {
-        String userInput = context.latestUserInput() != null ? context.latestUserInput().strip() : "";
-        String priorRequest = context.priorOutput(WorkflowPayload.CONFIRMED_REQUEST);
-        String activeTopic = priorRequest != null && !priorRequest.isBlank() ? priorRequest : userInput;
+        TopicContext topic = TopicContext.resolve(context);
 
-        String blueprint = educationalService.researchTestBlueprint(activeTopic, context.feedback());
-
-        String message = """
-                I've created the Test Paper Examination Blueprint for:
-                "%s"
-
-                --- Proposed Blueprint & Mark Distribution ---
-                %s
-                -----------------------------------------------
-
-                Does this structure meet your examination requirements?
-                • Say "yes" to proceed with question paper generation.
-                • Or reply with changes (e.g. "change total marks to 50", "add more case-based questions").""".formatted(
-                activeTopic, blueprint);
+        String blueprint = educationalService.researchTestBlueprint(
+                topic.className(),
+                topic.chapterName(),
+                topic.additionalDetails(),
+                context.feedback());
 
         Map<String, String> output = new LinkedHashMap<>();
-        output.put(WorkflowPayload.CONFIRMED_REQUEST, activeTopic);
+        output.put(WorkflowPayload.TOPIC_CLASS, topic.className());
+        output.put(WorkflowPayload.TOPIC_CHAPTER, topic.chapterName());
+        output.put(WorkflowPayload.TOPIC_DETAILS, topic.additionalDetails());
+        output.put(WorkflowPayload.CONFIRMED_REQUEST, topic.formattedTitle());
         output.put(WorkflowPayload.CONFIRMED_OUTLINE, blueprint);
+        output.put(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
+        output.put(WorkflowPayload.STAGE_ACTION, "confirm_blueprint");
         output.put("test.attempt", String.valueOf(context.attempt()));
 
-        return StageResult.of(message, output);
+        return StageResult.of(blueprint, output);
     }
 }

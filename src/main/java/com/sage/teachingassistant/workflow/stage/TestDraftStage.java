@@ -80,16 +80,16 @@ public class TestDraftStage implements WorkflowStage {
 
         String message = """
                 The Alpha Tutor Test Paper Word document has been generated!%s
-                Document: Alpha_Tutor_Test_%s.docx
-                Download link: %s
+                📄 Word Document: Alpha_Tutor_Test_%s.docx
+                📥 Download link: %s
 
                 --- Summary of Examination Paper ---
                 %s
                 -------------------------------------
 
                 Please review the questions, marks distribution, and answer key:
-                • Say "yes" if satisfied, and I will export the print-ready PDF.
-                • Or tell me your edits (e.g. "replace question 3 with a numerical").""".formatted(
+                • Click **Confirm** (or reply "yes") if satisfied, and I will export the print-ready PDF with Alpha Tutor branding.
+                • Or reply with your edits (e.g. "replace question 3 with a numerical", "increase total marks to 50").""".formatted(
                 revisionNote,
                 context.runId().substring(0, 8),
                 downloadUrl,
@@ -101,6 +101,8 @@ public class TestDraftStage implements WorkflowStage {
         output.put(WorkflowPayload.DRAFT_DOCUMENT, docxPathStr);
         output.put(WorkflowPayload.DOCX_FILE_PATH, docxPathStr);
         output.put(WorkflowPayload.DOCX_DOWNLOAD_URL, downloadUrl);
+        output.put(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
+        output.put(WorkflowPayload.STAGE_ACTION, "confirm_docx");
         output.put("test.draft.attempt", String.valueOf(context.attempt()));
 
         return StageResult.of(message, output);

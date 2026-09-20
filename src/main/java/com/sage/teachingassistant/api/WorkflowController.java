@@ -61,7 +61,22 @@ public class WorkflowController {
     /** Starts a run and executes its first stage. */
     @PostMapping("/runs")
     public RunResponse start(@Valid @RequestBody StartRunRequest request) {
-        return RunResponse.from(engine.start(request.workflowKey(), request.message()));
+        String effectiveMessage = request.resolveMessage();
+        return RunResponse.from(engine.start(
+                request.workflowKey(),
+                effectiveMessage,
+                request.className(),
+                request.chapterName(),
+                request.additionalDetails()));
+    }
+
+    /**
+     * Confirms the current stage of a run and proceeds to the next stage
+     * (or completes if on the final stage).
+     */
+    @PostMapping("/runs/{runId}/confirm")
+    public RunResponse confirm(@PathVariable String runId) {
+        return RunResponse.from(engine.handleMessage(runId, "confirm"));
     }
 
     /**

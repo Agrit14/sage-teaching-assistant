@@ -58,20 +58,26 @@ class WorkflowsCatalogTest {
         // Stage 0: Research
         StageContext ctx0 = new StageContext("run-ws-1", def.key(), "Class 10 Physics Electricity", null, 1, Map.of());
         StageResult res0 = research.execute(ctx0);
-        assertThat(res0.message()).contains("Worksheet Outline");
+        assertThat(res0.message()).contains("Brief Information Found on the Web");
+        assertThat(res0.message()).contains("Reference Web Links");
+        assertThat(res0.message()).contains("Confirmation & Next Step");
         assertThat(res0.output()).containsKey(WorkflowPayload.CONFIRMED_OUTLINE);
+        assertThat(res0.output()).containsEntry(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
+        assertThat(res0.output()).containsEntry(WorkflowPayload.TOPIC_CLASS, "Class 10");
 
         // Stage 1: Draft
         StageContext ctx1 = new StageContext("run-ws-1", def.key(), null, null, 1, res0.output());
         StageResult res1 = draft.execute(ctx1);
         assertThat(res1.message()).contains("Alpha Tutor Worksheet Word document");
         assertThat(res1.output()).containsKey(WorkflowPayload.DOCX_FILE_PATH);
+        assertThat(res1.output()).containsEntry(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
 
         // Stage 2: PDF Export
         StageContext ctx2 = new StageContext("run-ws-1", def.key(), null, null, 1, res1.output());
         StageResult res2 = pdf.execute(ctx2);
         assertThat(res2.message()).contains("Alpha Tutor Worksheet is ready");
         assertThat(res2.output()).containsKey(WorkflowPayload.PDF_FILE_PATH);
+        assertThat(res2.output()).containsEntry(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
     }
 
     @Test
@@ -86,15 +92,20 @@ class WorkflowsCatalogTest {
 
         StageContext ctx0 = new StageContext("run-test-1", def.key(), "Class 8 Math Linear Equations", null, 1, Map.of());
         StageResult res0 = research.execute(ctx0);
-        assertThat(res0.message()).contains("Blueprint");
+        assertThat(res0.message()).contains("Brief Information Found on the Web");
+        assertThat(res0.message()).contains("Reference Web Links");
+        assertThat(res0.message()).contains("Confirmation & Next Step");
+        assertThat(res0.output()).containsEntry(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
 
         StageContext ctx1 = new StageContext("run-test-1", def.key(), null, null, 1, res0.output());
         StageResult res1 = draft.execute(ctx1);
         assertThat(res1.message()).contains("Alpha Tutor Test Paper Word document");
+        assertThat(res1.output()).containsEntry(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
 
         StageContext ctx2 = new StageContext("run-test-1", def.key(), null, null, 1, res1.output());
         StageResult res2 = pdf.execute(ctx2);
         assertThat(res2.message()).contains("Alpha Tutor Test Examination Paper is ready");
+        assertThat(res2.output()).containsEntry(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
     }
 
     @Test
@@ -109,15 +120,20 @@ class WorkflowsCatalogTest {
 
         StageContext ctx0 = new StageContext("run-notes-1", def.key(), "Class 9 Biology Cell Structure", null, 1, Map.of());
         StageResult res0 = research.execute(ctx0);
-        assertThat(res0.message()).contains("Revision Notes Outline");
+        assertThat(res0.message()).contains("Brief Information Found on the Web");
+        assertThat(res0.message()).contains("Reference Web Links");
+        assertThat(res0.message()).contains("Confirmation & Next Step");
+        assertThat(res0.output()).containsEntry(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
 
         StageContext ctx1 = new StageContext("run-notes-1", def.key(), null, null, 1, res0.output());
         StageResult res1 = draft.execute(ctx1);
         assertThat(res1.message()).contains("Alpha Tutor Revision Notes Word document");
+        assertThat(res1.output()).containsEntry(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
 
         StageContext ctx2 = new StageContext("run-notes-1", def.key(), null, null, 1, res1.output());
         StageResult res2 = pdf.execute(ctx2);
         assertThat(res2.message()).contains("Alpha Tutor Revision Notes PDF is ready");
+        assertThat(res2.output()).containsEntry(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
     }
 
     @Test

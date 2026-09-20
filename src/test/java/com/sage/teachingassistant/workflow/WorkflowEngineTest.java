@@ -274,4 +274,27 @@ class WorkflowEngineTest {
         assertThat(engine.describe(first.runId()).stageIndex()).isEqualTo(1);
         assertThat(engine.describe(second.runId()).stageIndex()).isZero();
     }
+
+    @Test
+    void startWithTopicParametersPropagatesToInitialStage() {
+        WorkflowTurn turn = engine.start(
+                WORKFLOW,
+                "Custom Topic Message",
+                "Class 10",
+                "Electricity",
+                "CBSE numericals");
+
+        assertThat(confirm.received).hasSize(1);
+        StageContext ctx = confirm.lastContext();
+        assertThat(ctx.priorOutput(WorkflowPayload.TOPIC_CLASS)).isEqualTo("Class 10");
+        assertThat(ctx.priorOutput(WorkflowPayload.TOPIC_CHAPTER)).isEqualTo("Electricity");
+        assertThat(ctx.priorOutput(WorkflowPayload.TOPIC_DETAILS)).isEqualTo("CBSE numericals");
+
+        TopicContext resolved = TopicContext.resolve(ctx);
+        assertThat(resolved.className()).isEqualTo("Class 10");
+        assertThat(resolved.chapterName()).isEqualTo("Electricity");
+        assertThat(resolved.additionalDetails()).isEqualTo("CBSE numericals");
+    }
 }
+
+

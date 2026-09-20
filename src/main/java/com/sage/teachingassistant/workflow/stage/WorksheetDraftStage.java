@@ -80,16 +80,16 @@ public class WorksheetDraftStage implements WorkflowStage {
 
         String message = """
                 The Alpha Tutor Worksheet Word document has been generated!%s
-                Document: Alpha_Tutor_Worksheet_%s.docx
-                Download link: %s
+                📄 Word Document: Alpha_Tutor_Worksheet_%s.docx
+                📥 Download link: %s
 
                 --- Summary of Worksheet Content ---
                 %s
                 -------------------------------------
 
-                Please review the document:
-                • Say "yes" if it looks good, and I will export the final PDF with the Alpha Tutor template.
-                • Or tell me what changes or additional questions you need.""".formatted(
+                Please review the Word document:
+                • Click **Confirm** (or reply "yes") if it looks good, and I will export the final branded Alpha Tutor PDF.
+                • Or reply with any changes, questions, or adjustments you'd like.""".formatted(
                 revisionNote,
                 context.runId().substring(0, 8),
                 downloadUrl,
@@ -101,6 +101,8 @@ public class WorksheetDraftStage implements WorkflowStage {
         output.put(WorkflowPayload.DRAFT_DOCUMENT, docxPathStr);
         output.put(WorkflowPayload.DOCX_FILE_PATH, docxPathStr);
         output.put(WorkflowPayload.DOCX_DOWNLOAD_URL, downloadUrl);
+        output.put(WorkflowPayload.STAGE_CAN_CONFIRM, "true");
+        output.put(WorkflowPayload.STAGE_ACTION, "confirm_docx");
         output.put("worksheet.draft.attempt", String.valueOf(context.attempt()));
 
         return StageResult.of(message, output);
