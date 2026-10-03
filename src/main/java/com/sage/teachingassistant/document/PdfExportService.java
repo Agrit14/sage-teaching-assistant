@@ -25,6 +25,7 @@ import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
+import org.apache.poi.xwpf.usermodel.UnderlinePatterns;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ import java.awt.Color;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -170,32 +172,148 @@ public class PdfExportService {
             if (upper.contains("ANSWER KEY") || upper.contains("MARKING SCHEME") || upper.contains("SOLUTIONS")) {
                 document.newPage();
             }
-            Paragraph pdfPara = new Paragraph(cleanMarkdown(text), FONT_SECTION);
+            Paragraph pdfPara = buildPdfParagraphFromDocx(p, FONT_SECTION, null);
             pdfPara.setAlignment(Element.ALIGN_CENTER);
             pdfPara.setSpacingBefore(14);
             pdfPara.setSpacingAfter(6);
             document.add(pdfPara);
-        } else if (text.matches("^\\d+[\\.\\)]\\s+.*")) {
-            Paragraph pdfPara = new Paragraph(cleanMarkdown(text), FONT_BOLD_BODY);
-            pdfPara.setSpacingBefore(6);
+            return;
+        }
+
+        // Check if this is a Question (e.g., "1. ", "1) ", "Q1. ", "Question 1: ")
+        if (isQuestionPattern(text)) {
+            Paragraph pdfPara = buildPdfParagraphFromDocx(p, FONT_BOLD_BODY, null);
+            pdfPara.setSpacingBefore(7);
             pdfPara.setSpacingAfter(3);
             pdfPara.setIndentationLeft(10);
             document.add(pdfPara);
-        } else if (text.matches("^[\\(\\[]?[A-Da-d][\\)\\]\\.]\\s+.*") || text.startsWith("- ") || text.startsWith("* ")) {
-            Paragraph pdfPara = new Paragraph(cleanMarkdown(text), FONT_BODY);
+            return;
+        }
+
+        // Check if this is a Bullet point (Word native bullet or bullet character in text)
+        boolean isNativeBullet = (p.getNumID() != null && !p.getNumID().equals(BigInteger.ZERO))
+                || (p.getStyle() != null && p.getStyle().toLowerCase().contains("bullet"));
+        boolean isTextBullet = text.matches("^[-*+•▪▫–—]\\s+.*");
+
+        if (isNativeBullet || isTextBullet) {
+            String prepend = (!isTextBullet) ? "• " : null;
+            Paragraph pdfPara = buildPdfParagraphFromDocx(p, FONT_BODY, prepend);
+            pdfPara.setSpacingBefore(2.5f);
+            pdfPara.setSpacingAfter(2.5f);
+
+            int ilvl = 0;
+            try {
+                if (p.getNumIlvl() != null) {
+                    ilvl = p.getNumIlvl().intValue();
+                }
+            } catch (Exception ignored) {}
+
+            float indent = 20f + (ilvl * 14f);
+            pdfPara.setIndentationLeft(indent);
+            document.add(pdfPara);
+            return;
+        }
+
+        // Check if this is a Sub-item or Option: (a), (b), (i), (ii), etc.
+        if (isSubItemPattern(text)) {
+            Paragraph pdfPara = buildPdfParagraphFromDocx(p, FONT_BODY, null);
             pdfPara.setSpacingBefore(2);
             pdfPara.setSpacingAfter(2);
-            pdfPara.setIndentationLeft(20);
+            pdfPara.setIndentationLeft(22);
             document.add(pdfPara);
-        } else {
-            Paragraph pdfPara = new Paragraph(cleanMarkdown(text), FONT_BODY);
-            pdfPara.setSpacingBefore(3);
-            pdfPara.setSpacingAfter(3);
-            if (p.getAlignment() == ParagraphAlignment.CENTER) {
-                pdfPara.setAlignment(Element.ALIGN_CENTER);
-            }
-            document.add(pdfPara);
+            return;
         }
+
+        // Regular paragraph: preserve runs, styles, and alignment
+        Paragraph pdfPara = buildPdfParagraphFromDocx(p, FONT_BODY, null);
+        pdfPara.setSpacingBefore(3.5f);
+        pdfPara.setSpacingAfter(3.5f);
+        if (p.getAlignment() == ParagraphAlignment.CENTER) {
+            pdfPara.setAlignment(Element.ALIGN_CENTER);
+        } else if (p.getAlignment() == ParagraphAlignment.RIGHT) {
+            pdfPara.setAlignment(Element.ALIGN_RIGHT);
+        } else if (p.getAlignment() == ParagraphAlignment.BOTH) {
+            pdfPara.setAlignment(Element.ALIGN_JUSTIFIED);
+        }
+        document.add(pdfPara);
+    }
+
+    private Paragraph buildPdfParagraphFromDocx(XWPFParagraph p, Font baseFont, String prependText) {
+        Paragraph pdfPara = new Paragraph();
+        if (prependText != null && !prependText.isEmpty()) {
+            pdfPara.add(new Chunk(prependText, baseFont));
+        }
+
+        List<XWPFRun> runs = p.getRuns();
+        if (runs == null || runs.isEmpty()) {
+            String text = p.getText().trim();
+            if (prependText == null && text.matches("^[-*+•▪▫–—]\\s+.*")) {
+                text = text.replaceFirst("^[-*+•▪▫–—]\\s+", "• ");
+            }
+            return buildPdfParagraphFromMarkdown(text, baseFont, null);
+        }
+
+        boolean firstRun = true;
+        for (XWPFRun r : runs) {
+            String rText = r.text();
+            if (rText == null || rText.isEmpty()) {
+                continue;
+            }
+
+            if (firstRun && prependText == null) {
+                if (rText.matches("^[-*+•▪▫–—]\\s+.*")) {
+                    rText = rText.replaceFirst("^[-*+•▪▫–—]\\s+", "• ");
+                }
+            }
+            firstRun = false;
+
+            int style = Font.NORMAL;
+            if (baseFont.getStyle() == Font.BOLD) {
+                style = Font.BOLD;
+            }
+            if (r.isBold() && r.isItalic()) {
+                style = Font.BOLDITALIC;
+            } else if (r.isBold()) {
+                style = Font.BOLD;
+            } else if (r.isItalic()) {
+                style = (style == Font.BOLD) ? Font.BOLDITALIC : Font.ITALIC;
+            }
+
+            float fontSize = baseFont.getSize();
+            if (r.getFontSize() > 0 && r.getFontSize() <= 28) {
+                fontSize = Math.min(Math.max((float) r.getFontSize(), 8f), 18f);
+            }
+
+            Color color = baseFont.getColor();
+            if (r.getColor() != null && r.getColor().matches("[0-9A-Fa-f]{6}")) {
+                try {
+                    color = new Color(Integer.parseInt(r.getColor(), 16));
+                } catch (Exception ignored) {}
+            }
+
+            Font font = FontFactory.getFont(FontFactory.HELVETICA, fontSize, style, color);
+            Chunk chunk = new Chunk(rText, font);
+            if (r.getUnderline() != null && r.getUnderline() != UnderlinePatterns.NONE) {
+                chunk.setUnderline(0.8f, -1.5f);
+            }
+            pdfPara.add(chunk);
+        }
+
+        return pdfPara;
+    }
+
+    private boolean isQuestionPattern(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        return text.matches("^(\\d+[\\.\\)]|(Q|QUE|QUESTION)\\s*\\.?\\s*\\d+[:\\.]?)\\s+.*");
+    }
+
+    private boolean isSubItemPattern(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        return text.matches("^([\\(\\[]?[a-zA-Z][\\)\\]\\.]|[\\(\\[]?[ivxIVX]+[\\)\\]\\.])\\s+.*");
     }
 
     private boolean isHeadingParagraph(XWPFParagraph p, String text, String upper) {
@@ -262,44 +380,80 @@ public class PdfExportService {
         pdfTable.setSpacingBefore(10f);
         pdfTable.setSpacingAfter(12f);
 
-        boolean isFirstRow = true;
+        // Proportional column weights
+        float[] colWidths = new float[maxCols];
+        for (int c = 0; c < maxCols; c++) {
+            colWidths[c] = 8f;
+        }
         for (XWPFTableRow row : table.getRows()) {
-            int colsAdded = 0;
+            int colIdx = 0;
             for (XWPFTableCell cell : row.getTableCells()) {
                 int colSpan = getCellColSpan(cell);
-                String cellText = cell.getText().trim();
+                if (colIdx < maxCols && colSpan == 1) {
+                    float len = Math.max(cell.getText().trim().length(), 4);
+                    colWidths[colIdx] = Math.max(colWidths[colIdx], len);
+                }
+                colIdx += colSpan;
+            }
+        }
+        for (int c = 0; c < maxCols; c++) {
+            colWidths[c] = (float) Math.pow(colWidths[c], 0.60);
+        }
+        pdfTable.setWidths(colWidths);
 
-                Font font = isFirstRow
+        int rowIndex = 0;
+        for (XWPFTableRow row : table.getRows()) {
+            boolean isHeader = (rowIndex == 0);
+            int colsAdded = 0;
+
+            for (XWPFTableCell cell : row.getTableCells()) {
+                int colSpan = getCellColSpan(cell);
+
+                Font defaultFont = isHeader
                         ? FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9.5f, COLOR_PRIMARY)
                         : FontFactory.getFont(FontFactory.HELVETICA, 9.0f, COLOR_TEXT);
 
-                Paragraph p = new Paragraph(cleanMarkdown(cellText), font);
-                if (isFirstRow) {
-                    p.setAlignment(Element.ALIGN_CENTER);
-                }
-
-                PdfPCell pdfCell = new PdfPCell(p);
-                if (colSpan > 1) {
-                    pdfCell.setColspan(colSpan);
-                }
-                colsAdded += colSpan;
-
-                // Professional table cell styling: borders, padding, and subtle header shading
+                PdfPCell pdfCell = new PdfPCell();
                 pdfCell.setPadding(6f);
                 pdfCell.setBorderColor(new Color(190, 200, 215));
                 pdfCell.setBorderWidth(0.8f);
 
-                if (isFirstRow) {
-                    pdfCell.setBackgroundColor(new Color(238, 243, 250)); // subtle blue-gray header
+                // Alternating row background colors
+                if (isHeader) {
+                    pdfCell.setBackgroundColor(new Color(238, 243, 250));
                     pdfCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+                } else if (rowIndex % 2 == 1) {
+                    pdfCell.setBackgroundColor(new Color(250, 252, 255));
+                    pdfCell.setHorizontalAlignment(Element.ALIGN_LEFT);
                 } else {
+                    pdfCell.setBackgroundColor(Color.WHITE);
                     pdfCell.setHorizontalAlignment(Element.ALIGN_LEFT);
                 }
 
+                if (colSpan > 1) {
+                    pdfCell.setColspan(colSpan);
+                }
+
+                // Render all paragraphs inside the cell to preserve runs, bold, italic, and multi-line content
+                List<XWPFParagraph> paras = cell.getParagraphs();
+                if (paras == null || paras.isEmpty() || cell.getText().trim().isEmpty()) {
+                    pdfCell.addElement(new Paragraph("", defaultFont));
+                } else {
+                    for (XWPFParagraph cp : paras) {
+                        if (cp.getText().trim().isEmpty()) continue;
+                        Paragraph p = buildPdfParagraphFromDocx(cp, defaultFont, null);
+                        if (isHeader || cp.getAlignment() == ParagraphAlignment.CENTER) {
+                            p.setAlignment(Element.ALIGN_CENTER);
+                        }
+                        pdfCell.addElement(p);
+                    }
+                }
+
                 pdfTable.addCell(pdfCell);
+                colsAdded += colSpan;
             }
 
-            // Fill missing columns in the row so table geometry stays valid
+            // Fill missing columns
             while (colsAdded < maxCols) {
                 PdfPCell empty = new PdfPCell(new Phrase(""));
                 empty.setPadding(6f);
@@ -308,7 +462,8 @@ public class PdfExportService {
                 pdfTable.addCell(empty);
                 colsAdded++;
             }
-            isFirstRow = false;
+
+            rowIndex++;
         }
 
         document.add(pdfTable);
@@ -357,7 +512,7 @@ public class PdfExportService {
             String rawLine = lines[i];
             String line = rawLine.trim();
 
-            // Detect Markdown Table lines (starting and ending with | or containing multiple |)
+            // Detect Markdown Table lines
             if (line.startsWith("|") && line.endsWith("|") && line.length() > 2) {
                 tableBuffer.add(line);
                 boolean isLastLine = (i == lines.length - 1);
@@ -373,6 +528,9 @@ public class PdfExportService {
             }
 
             if (line.isEmpty()) {
+                Paragraph blank = new Paragraph(" ", FontFactory.getFont(FontFactory.HELVETICA, 4f));
+                blank.setSpacingAfter(4f);
+                document.add(blank);
                 continue;
             }
 
@@ -390,7 +548,8 @@ public class PdfExportService {
                 if (upper.contains("ANSWER KEY") || upper.contains("MARKING SCHEME") || upper.contains("SOLUTIONS")) {
                     document.newPage();
                 }
-                Paragraph p = new Paragraph(cleanMarkdown(line), FONT_SECTION);
+                String cleanH = cleanMarkdownHeading(line);
+                Paragraph p = new Paragraph(cleanH, FONT_SECTION);
                 p.setAlignment(Element.ALIGN_CENTER);
                 p.setSpacingBefore(14);
                 p.setSpacingAfter(6);
@@ -398,33 +557,48 @@ public class PdfExportService {
             }
             // Heading 2 / Sub-section - Bold & Center-Aligned
             else if (line.startsWith("## ") || line.startsWith("### ")) {
-                Paragraph p = new Paragraph(cleanMarkdown(line), FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11f, COLOR_PRIMARY));
+                String cleanH = cleanMarkdownHeading(line);
+                Paragraph p = new Paragraph(cleanH, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11f, COLOR_PRIMARY));
                 p.setAlignment(Element.ALIGN_CENTER);
                 p.setSpacingBefore(10);
                 p.setSpacingAfter(4);
                 document.add(p);
             }
             // Numbered question or list item
-            else if (line.matches("^\\d+[\\.\\)]\\s+.*")) {
-                Paragraph p = new Paragraph(cleanMarkdown(line), FONT_BOLD_BODY);
-                p.setSpacingBefore(6);
+            else if (isQuestionPattern(line)) {
+                Paragraph p = buildPdfParagraphFromMarkdown(line, FONT_BOLD_BODY, null);
+                p.setSpacingBefore(7);
                 p.setSpacingAfter(3);
-                p.setIndentationLeft(8);
+                p.setIndentationLeft(10);
                 document.add(p);
             }
-            // Options (A), (B) or bullets
-            else if (line.matches("^[\\(\\[]?[A-Da-d][\\)\\]\\.]\\s+.*") || line.startsWith("- ") || line.startsWith("* ")) {
-                Paragraph p = new Paragraph(cleanMarkdown(line), FONT_BODY);
+            // Bullets with hierarchical indentation support
+            else if (line.matches("^[-*+•▪▫–—]\\s+.*") || rawLine.matches("^\\s+[-*+•▪▫–—]\\s+.*")) {
+                int spaces = 0;
+                while (spaces < rawLine.length() && Character.isWhitespace(rawLine.charAt(spaces))) {
+                    spaces++;
+                }
+                float indent = 18f + (spaces / 2) * 10f;
+                String strippedBullet = line.replaceFirst("^[-*+•▪▫–—]\\s+", "");
+                Paragraph p = buildPdfParagraphFromMarkdown(strippedBullet, FONT_BODY, "• ");
+                p.setSpacingBefore(2.5f);
+                p.setSpacingAfter(2.5f);
+                p.setIndentationLeft(indent);
+                document.add(p);
+            }
+            // Options (A), (B), (i), (ii)
+            else if (isSubItemPattern(line)) {
+                Paragraph p = buildPdfParagraphFromMarkdown(line, FONT_BODY, null);
                 p.setSpacingBefore(2);
                 p.setSpacingAfter(2);
-                p.setIndentationLeft(20);
+                p.setIndentationLeft(22);
                 document.add(p);
             }
             // Regular text
             else {
-                Paragraph p = new Paragraph(cleanMarkdown(line), FONT_BODY);
-                p.setSpacingBefore(3);
-                p.setSpacingAfter(3);
+                Paragraph p = buildPdfParagraphFromMarkdown(line, FONT_BODY, null);
+                p.setSpacingBefore(3.5f);
+                p.setSpacingAfter(3.5f);
                 document.add(p);
             }
         }
@@ -447,9 +621,9 @@ public class PdfExportService {
             if (stripped.matches("^[\\s\\-:\\|]+$")) {
                 continue;
             }
-            String[] cols = stripped.split("\\|");
+            String[] cols = stripped.split("\\|", -1);
             for (int c = 0; c < cols.length; c++) {
-                cols[c] = cleanMarkdown(cols[c].trim());
+                cols[c] = cols[c].trim();
             }
             parsedRows.add(cols);
         }
@@ -473,6 +647,24 @@ public class PdfExportService {
         pdfTable.setSpacingBefore(10f);
         pdfTable.setSpacingAfter(12f);
 
+        // Calculate proportional column weights
+        float[] colWidths = new float[maxCols];
+        for (int c = 0; c < maxCols; c++) {
+            colWidths[c] = 8f;
+        }
+        for (String[] rowData : parsedRows) {
+            for (int c = 0; c < maxCols; c++) {
+                if (c < rowData.length) {
+                    float len = Math.max(cleanMarkdown(rowData[c]).length(), 4);
+                    colWidths[c] = Math.max(colWidths[c], len);
+                }
+            }
+        }
+        for (int c = 0; c < maxCols; c++) {
+            colWidths[c] = (float) Math.pow(colWidths[c], 0.60);
+        }
+        pdfTable.setWidths(colWidths);
+
         for (int r = 0; r < parsedRows.size(); r++) {
             boolean isHeader = (r == 0);
             String[] rowData = parsedRows.get(r);
@@ -482,7 +674,7 @@ public class PdfExportService {
 
             for (int c = 0; c < maxCols; c++) {
                 String val = (c < rowData.length) ? rowData[c] : "";
-                Paragraph p = new Paragraph(val, cellFont);
+                Paragraph p = buildPdfParagraphFromMarkdown(val, cellFont, null);
                 if (isHeader) {
                     p.setAlignment(Element.ALIGN_CENTER);
                 }
@@ -495,7 +687,11 @@ public class PdfExportService {
                 if (isHeader) {
                     pdfCell.setBackgroundColor(new Color(238, 243, 250));
                     pdfCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+                } else if (r % 2 == 1) {
+                    pdfCell.setBackgroundColor(new Color(250, 252, 255));
+                    pdfCell.setHorizontalAlignment(Element.ALIGN_LEFT);
                 } else {
+                    pdfCell.setBackgroundColor(Color.WHITE);
                     pdfCell.setHorizontalAlignment(Element.ALIGN_LEFT);
                 }
 
@@ -504,6 +700,61 @@ public class PdfExportService {
         }
 
         document.add(pdfTable);
+    }
+
+    private Paragraph buildPdfParagraphFromMarkdown(String text, Font defaultFont, String prependText) {
+        Paragraph paragraph = new Paragraph();
+        if (prependText != null && !prependText.isEmpty()) {
+            paragraph.add(new Chunk(prependText, defaultFont));
+        }
+
+        if (text == null || text.isEmpty()) {
+            return paragraph;
+        }
+
+        // Tokenize markdown bold-italic (***), bold (**), italic (* or _), and code (`)
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "(\\*\\*\\*(.+?)\\*\\*\\*)|(\\*\\*(.+?)\\*\\*)|(\\*([^*]+?)\\*)|(_([^_]+?)_)|(`([^`]+?)`)"
+        );
+
+        java.util.regex.Matcher matcher = pattern.matcher(text);
+        int lastEnd = 0;
+
+        while (matcher.find()) {
+            if (matcher.start() > lastEnd) {
+                String plain = text.substring(lastEnd, matcher.start());
+                paragraph.add(new Chunk(plain, defaultFont));
+            }
+
+            if (matcher.group(1) != null) { // ***bold italic***
+                Font biFont = FontFactory.getFont(FontFactory.HELVETICA_BOLDOBLIQUE, defaultFont.getSize(), defaultFont.getColor());
+                paragraph.add(new Chunk(matcher.group(2), biFont));
+            } else if (matcher.group(3) != null) { // **bold**
+                Font bFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, defaultFont.getSize(), defaultFont.getColor());
+                paragraph.add(new Chunk(matcher.group(4), bFont));
+            } else if (matcher.group(5) != null) { // *italic*
+                Font iFont = FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, defaultFont.getSize(), defaultFont.getColor());
+                paragraph.add(new Chunk(matcher.group(6), iFont));
+            } else if (matcher.group(7) != null) { // _italic_
+                Font iFont = FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, defaultFont.getSize(), defaultFont.getColor());
+                paragraph.add(new Chunk(matcher.group(8), iFont));
+            } else if (matcher.group(9) != null) { // `code`
+                Font cFont = FontFactory.getFont(FontFactory.COURIER, defaultFont.getSize() * 0.95f, defaultFont.getColor());
+                paragraph.add(new Chunk(matcher.group(10), cFont));
+            }
+
+            lastEnd = matcher.end();
+        }
+
+        if (lastEnd < text.length()) {
+            paragraph.add(new Chunk(text.substring(lastEnd), defaultFont));
+        }
+
+        return paragraph;
+    }
+
+    private String cleanMarkdownHeading(String text) {
+        return text.replaceAll("^#{1,6}\\s+", "").replaceAll("\\*\\*", "").trim();
     }
 
     private String cleanMarkdown(String text) {

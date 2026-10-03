@@ -128,6 +128,9 @@ public class DocxTemplateGenerator {
             }
 
             if (line.isEmpty()) {
+                XWPFParagraph gap = doc.createParagraph();
+                gap.setSpacingBefore(0);
+                gap.setSpacingAfter(40);
                 continue;
             }
 
@@ -161,20 +164,32 @@ public class DocxTemplateGenerator {
                 para.setSpacingAfter(30);
                 appendFormattedRuns(para, cleanMarkdownHeading(line), 11, COLOR_NAVY, true);
             }
-            // Numbered question
-            else if (line.matches("^\\d+[\\.\\)]\\s+.*")) {
-                para.setSpacingBefore(50);
+            // Numbered question or list item (e.g., 1. or Q1. or Question 1:)
+            else if (isQuestionLine(line)) {
+                para.setSpacingBefore(60);
                 para.setSpacingAfter(30);
                 para.setIndentationLeft(240);
                 appendFormattedRuns(para, line, 11, COLOR_DARK_GRAY, false);
             }
-            // Question Options (A), (B), etc. or bullets
-            else if (line.matches("^[\\(\\[]?[A-Da-d][\\)\\]\\.]\\s+.*") || line.startsWith("- ") || line.startsWith("* ")) {
+            // Bullets with hierarchical indentation support
+            else if (line.matches("^[-*+•▪▫–—]\\s+.*") || rawLine.matches("^\\s+[-*+•▪▫–—]\\s+.*")) {
+                int spaces = 0;
+                while (spaces < rawLine.length() && Character.isWhitespace(rawLine.charAt(spaces))) {
+                    spaces++;
+                }
+                int indent = 360 + (spaces / 2) * 160;
+                para.setSpacingBefore(25);
+                para.setSpacingAfter(25);
+                para.setIndentationLeft(indent);
+                String strippedBullet = line.replaceFirst("^[-*+•▪▫–—]\\s+", "");
+                appendFormattedRuns(para, "• " + strippedBullet, 10, COLOR_DARK_GRAY, false);
+            }
+            // Options (A), (B), (i), (ii)
+            else if (isSubItemLine(line)) {
                 para.setSpacingBefore(20);
                 para.setSpacingAfter(20);
                 para.setIndentationLeft(480);
-                String bulletLine = line.replaceFirst("^[-*]\\s+", "• ");
-                appendFormattedRuns(para, bulletLine, 10, COLOR_DARK_GRAY, false);
+                appendFormattedRuns(para, line, 10, COLOR_DARK_GRAY, false);
             }
             // Regular text / Instructions
             else {
@@ -190,32 +205,70 @@ public class DocxTemplateGenerator {
         }
     }
 
+    private boolean isQuestionLine(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        return text.matches("^(\\d+[\\.\\)]|(Q|QUE|QUESTION)\\s*\\.?\\s*\\d+[:\\.]?)\\s+.*");
+    }
+
+    private boolean isSubItemLine(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        return text.matches("^([\\(\\[]?[a-zA-Z][\\)\\]\\.]|[\\(\\[]?[ivxIVX]+[\\)\\]\\.])\\s+.*");
+    }
+
     private void appendFormattedRuns(XWPFParagraph para, String text, int fontSize, String color, boolean forceBold) {
         if (text == null || text.isEmpty()) {
             return;
         }
 
-        // Split text by markdown bold delimiter **
-        String[] parts = text.split("(?<=\\*\\*)|(?=\\*\\*)");
-        boolean isBold = forceBold;
+        // Tokenize markdown bold-italic (***), bold (**), italic (* or _), and code (`)
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "(\\*\\*\\*(.+?)\\*\\*\\*)|(\\*\\*(.+?)\\*\\*)|(\\*([^*]+?)\\*)|(_([^_]+?)_)|(`([^`]+?)`)"
+        );
 
-        for (String part : parts) {
-            if ("**".equals(part)) {
-                if (!forceBold) {
-                    isBold = !isBold;
-                }
-                continue;
+        java.util.regex.Matcher matcher = pattern.matcher(text);
+        int lastEnd = 0;
+
+        while (matcher.find()) {
+            if (matcher.start() > lastEnd) {
+                String plain = text.substring(lastEnd, matcher.start());
+                createRun(para, plain, fontSize, color, forceBold, false, false);
             }
-            if (part.isEmpty()) {
-                continue;
+
+            if (matcher.group(1) != null) { // ***bold italic***
+                createRun(para, matcher.group(2), fontSize, color, true, true, false);
+            } else if (matcher.group(3) != null) { // **bold**
+                createRun(para, matcher.group(4), fontSize, color, true, false, false);
+            } else if (matcher.group(5) != null) { // *italic*
+                createRun(para, matcher.group(6), fontSize, color, forceBold, true, false);
+            } else if (matcher.group(7) != null) { // _italic_
+                createRun(para, matcher.group(8), fontSize, color, forceBold, true, false);
+            } else if (matcher.group(9) != null) { // `code`
+                createRun(para, matcher.group(10), fontSize, color, forceBold, false, true);
             }
-            XWPFRun run = para.createRun();
-            run.setText(part);
-            run.setBold(isBold);
-            run.setFontSize(fontSize);
-            run.setFontFamily(FONT_FAMILY);
-            run.setColor(color);
+
+            lastEnd = matcher.end();
         }
+
+        if (lastEnd < text.length()) {
+            createRun(para, text.substring(lastEnd), fontSize, color, forceBold, false, false);
+        }
+    }
+
+    private void createRun(XWPFParagraph para, String text, int fontSize, String color, boolean bold, boolean italic, boolean code) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        XWPFRun run = para.createRun();
+        run.setText(text);
+        run.setBold(bold);
+        run.setItalic(italic);
+        run.setFontSize(fontSize);
+        run.setFontFamily(code ? "Consolas" : FONT_FAMILY);
+        run.setColor(color);
     }
 
     private void appendMarkdownTable(XWPFDocument doc, List<String> tableLines) {
@@ -235,7 +288,7 @@ public class DocxTemplateGenerator {
             String[] rawCells = line.split("\\|", -1);
             List<String> cells = new ArrayList<>();
             for (String c : rawCells) {
-                cells.add(cleanMarkdown(c));
+                cells.add(c.trim());
             }
             rows.add(cells);
         }
@@ -259,6 +312,27 @@ public class DocxTemplateGenerator {
         table.setWidth("100%");
         table.setTableAlignment(TableRowAlign.CENTER);
 
+        // Proportional column weights
+        float[] weights = new float[maxCols];
+        for (int c = 0; c < maxCols; c++) {
+            weights[c] = 8f;
+        }
+        for (List<String> r : rows) {
+            for (int c = 0; c < maxCols; c++) {
+                if (c < r.size()) {
+                    weights[c] = Math.max(weights[c], (float) cleanMarkdown(r.get(c)).length());
+                }
+            }
+        }
+        float totalWeight = 0;
+        for (int c = 0; c < maxCols; c++) {
+            weights[c] = (float) Math.pow(weights[c], 0.60);
+            totalWeight += weights[c];
+        }
+
+        // Standard page printable width in twips: ~9000
+        int totalTwips = 9000;
+
         for (int r = 0; r < rows.size(); r++) {
             List<String> rowData = rows.get(r);
             XWPFTableRow tableRow = table.getRow(r);
@@ -271,8 +345,14 @@ public class DocxTemplateGenerator {
                 }
                 String cellText = c < rowData.size() ? rowData.get(c) : "";
 
+                int colTwips = Math.round((weights[c] / totalWeight) * totalTwips);
+                cell.setWidthType(TableWidthType.DXA);
+                cell.setWidth(String.valueOf(colTwips));
+
                 if (isHeader) {
                     cell.setColor("EEF3FA");
+                } else if (r % 2 == 1) {
+                    cell.setColor("F8FAFD");
                 }
 
                 XWPFParagraph cellPara = cell.getParagraphs().isEmpty() ? cell.addParagraph() : cell.getParagraphs().get(0);
@@ -282,12 +362,7 @@ public class DocxTemplateGenerator {
                     cellPara.setAlignment(ParagraphAlignment.CENTER);
                 }
 
-                XWPFRun cellRun = cellPara.createRun();
-                cellRun.setText(cellText);
-                cellRun.setBold(isHeader);
-                cellRun.setFontSize(isHeader ? 10 : 9);
-                cellRun.setFontFamily(FONT_FAMILY);
-                cellRun.setColor(isHeader ? COLOR_NAVY : COLOR_DARK_GRAY);
+                appendFormattedRuns(cellPara, cellText, isHeader ? 10 : 9, isHeader ? COLOR_NAVY : COLOR_DARK_GRAY, isHeader);
             }
         }
 
