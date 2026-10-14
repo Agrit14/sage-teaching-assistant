@@ -173,4 +173,77 @@ class DocumentFormattingRegressionTest {
             assertThat(cellPara.getRuns().stream().anyMatch(XWPFRun::isBold)).isTrue();
         }
     }
+
+    @Test
+    void testDocxWithImagesConvertsToPdfSuccessfully() throws Exception {
+        PdfExportService pdfService = new PdfExportService();
+
+        // Create a 100x100 sample PNG image in memory
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(100, 100, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        g.setColor(java.awt.Color.BLUE);
+        g.fillRect(0, 0, 100, 100);
+        g.dispose();
+        ByteArrayOutputStream imgStream = new ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", imgStream);
+        byte[] testImageBytes = imgStream.toByteArray();
+
+        byte[] docxBytes;
+        try (XWPFDocument doc = new XWPFDocument();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            // Paragraph 1: Question with attached image
+            XWPFParagraph p1 = doc.createParagraph();
+            XWPFRun r1 = p1.createRun();
+            r1.setText("Q1. Identify the diagram below:");
+            XWPFRun r1Pic = p1.createRun();
+            try (ByteArrayInputStream in = new ByteArrayInputStream(testImageBytes)) {
+                r1Pic.addPicture(in, org.apache.poi.common.usermodel.PictureType.PNG, "diagram.png",
+                        org.apache.poi.util.Units.toEMU(150), org.apache.poi.util.Units.toEMU(100));
+            }
+
+            // Paragraph 2: Standalone image (no text in paragraph)
+            XWPFParagraph p2 = doc.createParagraph();
+            XWPFRun r2Pic = p2.createRun();
+            try (ByteArrayInputStream in = new ByteArrayInputStream(testImageBytes)) {
+                r2Pic.addPicture(in, org.apache.poi.common.usermodel.PictureType.PNG, "standalone.png",
+                        org.apache.poi.util.Units.toEMU(200), org.apache.poi.util.Units.toEMU(120));
+            }
+
+            // Table with an image inside a cell
+            XWPFTable table = doc.createTable(1, 2);
+            table.getRow(0).getCell(0).setText("Circuit A");
+            XWPFParagraph cellPara = table.getRow(0).getCell(1).getParagraphs().get(0);
+            XWPFRun cellPicRun = cellPara.createRun();
+            try (ByteArrayInputStream in = new ByteArrayInputStream(testImageBytes)) {
+                cellPicRun.addPicture(in, org.apache.poi.common.usermodel.PictureType.PNG, "cell.png",
+                        org.apache.poi.util.Units.toEMU(100), org.apache.poi.util.Units.toEMU(80));
+            }
+
+            doc.write(out);
+            docxBytes = out.toByteArray();
+        }
+
+        byte[] pdfBytes = pdfService.convertDocxToPdf(docxBytes);
+        assertThat(pdfBytes).isNotEmpty();
+
+        // Verify PDF is valid and contains text and images
+        try (org.apache.pdfbox.pdmodel.PDDocument pdDoc = org.apache.pdfbox.Loader.loadPDF(pdfBytes)) {
+            org.apache.pdfbox.text.PDFTextStripper stripper = new org.apache.pdfbox.text.PDFTextStripper();
+            String text = stripper.getText(pdDoc);
+            assertThat(text).contains("Identify the diagram below");
+            assertThat(text).contains("Circuit A");
+
+            // Verify image resources exist on page 1
+            org.apache.pdfbox.pdmodel.PDPage page = pdDoc.getPage(0);
+            int imageCount = 0;
+            for (org.apache.pdfbox.cos.COSName xObjectName : page.getResources().getXObjectNames()) {
+                if (page.getResources().isImageXObject(xObjectName)) {
+                    imageCount++;
+                }
+            }
+            // Header image + 3 docx images
+            assertThat(imageCount).isGreaterThanOrEqualTo(3);
+        }
+    }
 }

@@ -144,9 +144,30 @@ public class PdfExportService {
         }
     }
 
+    private static class DocxImageData {
+        final byte[] bytes;
+        final double widthPoints;
+        final double heightPoints;
+
+        DocxImageData(byte[] bytes, double widthPoints, double heightPoints) {
+            this.bytes = bytes;
+            this.widthPoints = widthPoints;
+            this.heightPoints = heightPoints;
+        }
+    }
+
     private void renderDocxParagraph(Document document, XWPFParagraph p) throws Exception {
+        List<DocxImageData> images = extractImagesFromParagraph(p);
         String text = p.getText().trim();
+
+        // If no text and no images, nothing to render
+        if (text.isEmpty() && images.isEmpty()) {
+            return;
+        }
+
+        // Standalone image paragraph (no text, only image)
         if (text.isEmpty()) {
+            renderDocxImages(document, images, p.getAlignment());
             return;
         }
 
@@ -177,6 +198,7 @@ public class PdfExportService {
             pdfPara.setSpacingBefore(14);
             pdfPara.setSpacingAfter(6);
             document.add(pdfPara);
+            renderDocxImages(document, images, p.getAlignment());
             return;
         }
 
@@ -187,6 +209,7 @@ public class PdfExportService {
             pdfPara.setSpacingAfter(3);
             pdfPara.setIndentationLeft(10);
             document.add(pdfPara);
+            renderDocxImages(document, images, p.getAlignment());
             return;
         }
 
@@ -211,6 +234,7 @@ public class PdfExportService {
             float indent = 20f + (ilvl * 14f);
             pdfPara.setIndentationLeft(indent);
             document.add(pdfPara);
+            renderDocxImages(document, images, p.getAlignment());
             return;
         }
 
@@ -221,6 +245,7 @@ public class PdfExportService {
             pdfPara.setSpacingAfter(2);
             pdfPara.setIndentationLeft(22);
             document.add(pdfPara);
+            renderDocxImages(document, images, p.getAlignment());
             return;
         }
 
@@ -236,6 +261,127 @@ public class PdfExportService {
             pdfPara.setAlignment(Element.ALIGN_JUSTIFIED);
         }
         document.add(pdfPara);
+        renderDocxImages(document, images, p.getAlignment());
+    }
+
+    private List<DocxImageData> extractImagesFromParagraph(XWPFParagraph p) {
+        List<DocxImageData> images = new ArrayList<>();
+        if (p.getRuns() != null) {
+            for (XWPFRun r : p.getRuns()) {
+                List<org.apache.poi.xwpf.usermodel.XWPFPicture> pics = r.getEmbeddedPictures();
+                if (pics != null) {
+                    for (org.apache.poi.xwpf.usermodel.XWPFPicture pic : pics) {
+                        try {
+                            if (pic.getPictureData() != null && pic.getPictureData().getData() != null) {
+                                byte[] data = pic.getPictureData().getData();
+                                double w = pic.getWidth();
+                                double h = pic.getDepth();
+                                images.add(new DocxImageData(data, w, h));
+                            }
+                        } catch (Exception e) {
+                            log.warn("Could not read embedded picture: {}", e.getMessage());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: Check if CTP has drawings with blips if runs didn't yield pictures
+        if (images.isEmpty() && p.getCTP() != null && p.getDocument() != null) {
+            try {
+                org.apache.xmlbeans.XmlObject[] blips = p.getCTP().selectPath(
+                        "declare namespace a='http://schemas.openxmlformats.org/drawingml/2006/main' " +
+                        "declare namespace r='http://schemas.openxmlformats.org/officeDocument/2006/relationships' " +
+                        ".//a:blip/@r:embed"
+                );
+                if (blips != null) {
+                    for (org.apache.xmlbeans.XmlObject blipObj : blips) {
+                        String rId = blipObj.newCursor().getTextValue();
+                        if (rId != null && !rId.isBlank()) {
+                            org.apache.poi.xwpf.usermodel.XWPFPictureData picData = p.getDocument().getPictureDataByID(rId);
+                            if (picData != null && picData.getData() != null) {
+                                images.add(new DocxImageData(picData.getData(), 0, 0));
+                            }
+                        }
+                    }
+                }
+
+                org.apache.xmlbeans.XmlObject[] vmlImgs = p.getCTP().selectPath(
+                        "declare namespace v='urn:schemas-microsoft-com:vml' " +
+                        "declare namespace r='http://schemas.openxmlformats.org/officeDocument/2006/relationships' " +
+                        ".//v:imagedata/@r:id"
+                );
+                if (vmlImgs != null) {
+                    for (org.apache.xmlbeans.XmlObject vmlObj : vmlImgs) {
+                        String rId = vmlObj.newCursor().getTextValue();
+                        if (rId != null && !rId.isBlank()) {
+                            org.apache.poi.xwpf.usermodel.XWPFPictureData picData = p.getDocument().getPictureDataByID(rId);
+                            if (picData != null && picData.getData() != null) {
+                                images.add(new DocxImageData(picData.getData(), 0, 0));
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        return images;
+    }
+
+    private void renderDocxImages(Document document, List<DocxImageData> images, ParagraphAlignment alignment) {
+        if (images == null || images.isEmpty()) {
+            return;
+        }
+
+        float maxUsableWidth = PageSize.A4.getWidth() - MARGIN_LEFT - MARGIN_RIGHT; // ~523.28pt
+        float maxUsableHeight = PageSize.A4.getHeight() - MARGIN_TOP - MARGIN_BOTTOM - 20f; // ~651.89pt
+
+        byte[] headerBytes = loadHeaderImageBytes();
+
+        for (DocxImageData imgData : images) {
+            try {
+                // If it's the exact same bytes as the header banner, skip to prevent duplicate banner
+                if (headerBytes != null && headerBytes.length == imgData.bytes.length
+                        && java.util.Arrays.equals(headerBytes, imgData.bytes)) {
+                    continue;
+                }
+
+                Image img = Image.getInstance(imgData.bytes);
+
+                float targetW = (imgData.widthPoints > 0) ? (float) imgData.widthPoints : img.getPlainWidth();
+                float targetH = (imgData.heightPoints > 0) ? (float) imgData.heightPoints : img.getPlainHeight();
+
+                if (targetW <= 0) targetW = img.getPlainWidth();
+                if (targetH <= 0) targetH = img.getPlainHeight();
+
+                if (targetW > 0 && targetH > 0) {
+                    float scale = 1.0f;
+                    if (targetW > maxUsableWidth) {
+                        scale = Math.min(scale, maxUsableWidth / targetW);
+                    }
+                    if (targetH * scale > maxUsableHeight) {
+                        scale = Math.min(scale, maxUsableHeight / targetH);
+                    }
+                    img.scaleAbsolute(targetW * scale, targetH * scale);
+                }
+
+                if (alignment == ParagraphAlignment.RIGHT) {
+                    img.setAlignment(Element.ALIGN_RIGHT);
+                } else if (alignment == ParagraphAlignment.LEFT) {
+                    img.setAlignment(Element.ALIGN_LEFT);
+                } else {
+                    img.setAlignment(Element.ALIGN_CENTER);
+                }
+
+                img.setSpacingBefore(6f);
+                img.setSpacingAfter(8f);
+
+                document.add(img);
+            } catch (Exception e) {
+                log.warn("Could not render embedded DOCX image to PDF: {}", e.getMessage());
+            }
+        }
     }
 
     private Paragraph buildPdfParagraphFromDocx(XWPFParagraph p, Font baseFont, String prependText) {
@@ -434,19 +580,51 @@ public class PdfExportService {
                     pdfCell.setColspan(colSpan);
                 }
 
-                // Render all paragraphs inside the cell to preserve runs, bold, italic, and multi-line content
+                // Render all paragraphs inside the cell to preserve runs, bold, italic, multi-line content, and images
                 List<XWPFParagraph> paras = cell.getParagraphs();
-                if (paras == null || paras.isEmpty() || cell.getText().trim().isEmpty()) {
-                    pdfCell.addElement(new Paragraph("", defaultFont));
-                } else {
+                boolean cellHasContent = false;
+                if (paras != null && !paras.isEmpty()) {
                     for (XWPFParagraph cp : paras) {
-                        if (cp.getText().trim().isEmpty()) continue;
-                        Paragraph p = buildPdfParagraphFromDocx(cp, defaultFont, null);
-                        if (isHeader || cp.getAlignment() == ParagraphAlignment.CENTER) {
-                            p.setAlignment(Element.ALIGN_CENTER);
+                        List<DocxImageData> cellImages = extractImagesFromParagraph(cp);
+                        String cpText = cp.getText().trim();
+                        if (cpText.isEmpty() && cellImages.isEmpty()) {
+                            continue;
                         }
-                        pdfCell.addElement(p);
+
+                        cellHasContent = true;
+                        if (!cpText.isEmpty()) {
+                            Paragraph p = buildPdfParagraphFromDocx(cp, defaultFont, null);
+                            if (isHeader || cp.getAlignment() == ParagraphAlignment.CENTER) {
+                                p.setAlignment(Element.ALIGN_CENTER);
+                            }
+                            pdfCell.addElement(p);
+                        }
+
+                        for (DocxImageData cImg : cellImages) {
+                            try {
+                                Image img = Image.getInstance(cImg.bytes);
+                                float maxCellW = (colWidths.length > 0 && maxCols > 0)
+                                        ? (PageSize.A4.getWidth() - MARGIN_LEFT - MARGIN_RIGHT) / maxCols
+                                        : 200f;
+                                float w = (cImg.widthPoints > 0) ? (float) cImg.widthPoints : img.getPlainWidth();
+                                float h = (cImg.heightPoints > 0) ? (float) cImg.heightPoints : img.getPlainHeight();
+                                if (w > maxCellW && w > 0) {
+                                    float s = maxCellW / w;
+                                    img.scaleAbsolute(w * s, h * s);
+                                } else if (w > 0 && h > 0) {
+                                    img.scaleAbsolute(w, h);
+                                }
+                                img.setAlignment(Element.ALIGN_CENTER);
+                                pdfCell.addElement(img);
+                            } catch (Exception e) {
+                                log.warn("Could not render table cell image: {}", e.getMessage());
+                            }
+                        }
                     }
+                }
+
+                if (!cellHasContent) {
+                    pdfCell.addElement(new Paragraph("", defaultFont));
                 }
 
                 pdfTable.addCell(pdfCell);
