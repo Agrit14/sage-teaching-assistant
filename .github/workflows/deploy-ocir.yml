@@ -19,6 +19,7 @@ jobs:
     # Run if pushed directly to main/master, triggered manually, or if a PR was merged
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     env:
       REGISTRY: ${{ secrets.OCI_REGISTRY }}
@@ -80,16 +81,18 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
   deploy:
     name: Deploy to Oracle Cloud VM
     needs: build-and-push
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Check out repository

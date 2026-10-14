@@ -1,25 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # ------------------------------------------------------------------------------
-# Build stage
-# ------------------------------------------------------------------------------
-FROM eclipse-temurin:17-jdk-jammy AS builder
-
-WORKDIR /workspace
-
-# Copy Maven wrapper and POM first to leverage Docker layer caching
-COPY .mvn/ .mvn
-COPY mvnw pom.xml ./
-
-RUN chmod +x mvnw
-RUN ./mvnw dependency:go-offline -B
-
-# Copy application source and build the JAR
-COPY src ./src
-RUN ./mvnw clean package -DskipTests
-
-# ------------------------------------------------------------------------------
 # Production runtime stage
+# Uses pre-packaged Spring Boot JAR from Maven build for fast multi-platform builds
 # ------------------------------------------------------------------------------
 FROM eclipse-temurin:17-jre-jammy
 
@@ -31,8 +14,9 @@ WORKDIR /app
 # Create a dedicated non-root user and group
 RUN groupadd -r sage && useradd -r -g sage sage
 
-# Copy compiled JAR from the builder stage
-COPY --from=builder /workspace/target/*.jar /app/app.jar
+# Copy compiled JAR produced by Maven build
+ARG JAR_FILE=target/sage-teaching-assistant-*.jar
+COPY ${JAR_FILE} /app/app.jar
 
 # Ensure runtime file storage directory exists with proper ownership
 RUN mkdir -p /app/data/files && chown -R sage:sage /app
