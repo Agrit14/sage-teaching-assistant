@@ -71,11 +71,13 @@ jobs:
 
           # 4. Build image natively on VM and restart containers
           echo "Building Docker container natively and starting service..."
-          ssh -i ~/.ssh/id_vm $VM_USER@$VM_HOST << EOF
+          ssh -i ~/.ssh/id_vm $VM_USER@$VM_HOST << 'EOF'
             cd ~/sage-app
             docker build -t sage-teaching-assistant:latest .
             export IMAGE_NAME="sage-teaching-assistant:latest"
-            export GEMINI_API_KEY="$GEMINI_API_KEY"
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
+            sleep 8
+            docker ps
+            docker logs sage-app --tail 30
           EOF
