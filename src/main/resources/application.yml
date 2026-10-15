@@ -4,8 +4,10 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: ${MAX_FILE_SIZE:50MB}
-      max-request-size: ${MAX_REQUEST_SIZE:50MB}
+      enabled: true
+      max-file-size: ${MAX_FILE_SIZE:100MB}
+      max-request-size: ${MAX_REQUEST_SIZE:100MB}
+      file-size-threshold: 2MB
 
   datasource:
     url: ${SAGE_DB_URL:jdbc:postgresql://localhost:5433/sage}
@@ -33,6 +35,9 @@ server:
   # 8081 rather than the usual 8080: something else on this machine already
   # holds 8080. Override with SAGE_PORT.
   port: ${SAGE_PORT:8081}
+  tomcat:
+    max-swallow-size: -1
+    max-http-form-post-size: 100MB
 
 management:
   endpoints:

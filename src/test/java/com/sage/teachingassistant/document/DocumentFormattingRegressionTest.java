@@ -246,4 +246,62 @@ class DocumentFormattingRegressionTest {
             assertThat(imageCount).isGreaterThanOrEqualTo(3);
         }
     }
+
+    @Test
+    void testEmptyDocxConvertsSafelyWithoutCrashing() throws Exception {
+        PdfExportService pdfService = new PdfExportService();
+
+        byte[] emptyDocxBytes;
+        try (XWPFDocument doc = new XWPFDocument();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            doc.write(out);
+            emptyDocxBytes = out.toByteArray();
+        }
+
+        // Must not throw "The document has no pages"
+        byte[] pdfBytes = pdfService.convertDocxToPdf(emptyDocxBytes);
+        assertThat(pdfBytes).isNotEmpty();
+
+        try (org.apache.pdfbox.pdmodel.PDDocument pdDoc = org.apache.pdfbox.Loader.loadPDF(pdfBytes)) {
+            assertThat(pdDoc.getNumberOfPages()).isGreaterThanOrEqualTo(1);
+        }
+    }
+
+    @Test
+    void testDocxWithSoftLineBreaksAndPageBreaks() throws Exception {
+        PdfExportService pdfService = new PdfExportService();
+
+        byte[] docxBytes;
+        try (XWPFDocument doc = new XWPFDocument();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            // Paragraph with a soft break (<w:br/>)
+            XWPFParagraph p1 = doc.createParagraph();
+            XWPFRun r1 = p1.createRun();
+            r1.setText("Line 1 of question");
+            r1.addBreak();
+            r1.setText("Line 2 of question after soft break");
+
+            // Paragraph with explicit page break
+            XWPFParagraph p2 = doc.createParagraph();
+            p2.setPageBreak(true);
+            XWPFRun r2 = p2.createRun();
+            r2.setText("Content on page 2");
+
+            doc.write(out);
+            docxBytes = out.toByteArray();
+        }
+
+        byte[] pdfBytes = pdfService.convertDocxToPdf(docxBytes);
+        assertThat(pdfBytes).isNotEmpty();
+
+        try (org.apache.pdfbox.pdmodel.PDDocument pdDoc = org.apache.pdfbox.Loader.loadPDF(pdfBytes)) {
+            assertThat(pdDoc.getNumberOfPages()).isGreaterThanOrEqualTo(2);
+            org.apache.pdfbox.text.PDFTextStripper stripper = new org.apache.pdfbox.text.PDFTextStripper();
+            String text = stripper.getText(pdDoc);
+            assertThat(text).contains("Line 1 of question");
+            assertThat(text).contains("Line 2 of question after soft break");
+            assertThat(text).contains("Content on page 2");
+        }
+    }
 }
