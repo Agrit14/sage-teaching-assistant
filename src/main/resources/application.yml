@@ -2,6 +2,11 @@ spring:
   application:
     name: sage-teaching-assistant
 
+  servlet:
+    multipart:
+      max-file-size: ${MAX_FILE_SIZE:50MB}
+      max-request-size: ${MAX_REQUEST_SIZE:50MB}
+
   datasource:
     url: ${SAGE_DB_URL:jdbc:postgresql://localhost:5433/sage}
     username: ${SAGE_DB_USER:sage}
