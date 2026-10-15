@@ -37,6 +37,14 @@ jobs:
       - name: Build and package JAR with Maven
         run: ./mvnw clean package -DskipTests
 
+      - name: Optimize network MTU for Oracle Cloud
+        run: |
+          DEFAULT_IFACE=$(ip route show default | awk '{print $5}' | head -n 1)
+          if [ -n "$DEFAULT_IFACE" ]; then
+            sudo ip link set dev "$DEFAULT_IFACE" mtu 1380
+            echo "Set MTU on $DEFAULT_IFACE to 1380"
+          fi
+
       - name: Deploy to Oracle VM via SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_KEY }}
@@ -54,7 +62,7 @@ jobs:
 
           # 3. Transfer pre-built JAR, Dockerfile, and docker-compose
           echo "Copying application artifacts to Oracle VM..."
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_vm target/*.jar $VM_USER@$VM_HOST:~/sage-app/target/
+          scp -C -o StrictHostKeyChecking=no -i ~/.ssh/id_vm target/*.jar $VM_USER@$VM_HOST:~/sage-app/target/
           scp -o StrictHostKeyChecking=no -i ~/.ssh/id_vm Dockerfile docker-compose.prod.yml $VM_USER@$VM_HOST:~/sage-app/
 
           # 4. Build image natively on VM and restart containers
