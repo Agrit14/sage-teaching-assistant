@@ -246,4 +246,24 @@ class DocumentFormattingRegressionTest {
             assertThat(imageCount).isGreaterThanOrEqualTo(3);
         }
     }
+
+    @Test
+    void testEmptyDocxConvertsSafelyWithoutCrashing() throws Exception {
+        PdfExportService pdfService = new PdfExportService();
+
+        byte[] emptyDocxBytes;
+        try (XWPFDocument doc = new XWPFDocument();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            doc.write(out);
+            emptyDocxBytes = out.toByteArray();
+        }
+
+        // Must not throw "The document has no pages"
+        byte[] pdfBytes = pdfService.convertDocxToPdf(emptyDocxBytes);
+        assertThat(pdfBytes).isNotEmpty();
+
+        try (org.apache.pdfbox.pdmodel.PDDocument pdDoc = org.apache.pdfbox.Loader.loadPDF(pdfBytes)) {
+            assertThat(pdDoc.getNumberOfPages()).isEqualTo(1);
+        }
+    }
 }

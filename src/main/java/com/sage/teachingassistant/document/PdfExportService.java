@@ -136,6 +136,10 @@ public class PdfExportService {
                 }
             }
 
+            if (document.getPageNumber() == 0) {
+                document.add(new Paragraph(" "));
+            }
+
             document.close();
             return out.toByteArray();
         } catch (Exception e) {
