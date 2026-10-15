@@ -77,7 +77,20 @@ jobs:
             export IMAGE_NAME="sage-teaching-assistant:latest"
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
-            sleep 8
-            docker ps
-            docker logs sage-app --tail 30
+
+            echo "Verifying application startup..."
+            for i in $(seq 1 30); do
+              if curl -s http://localhost:8081/actuator/health | grep -q "UP"; then
+                echo "Sage application is UP and HEALTHY!"
+                docker ps | grep sage-app
+                exit 0
+              fi
+              echo "Waiting for sage-app to become healthy... ($i/30)"
+              sleep 2
+            done
+
+            echo "=== FAILED TO START: RECENT DOCKER LOGS ==="
+            docker ps -a | grep sage-app
+            docker logs sage-app --tail 100
+            exit 1
           EOF
