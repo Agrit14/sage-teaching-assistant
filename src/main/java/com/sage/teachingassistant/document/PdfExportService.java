@@ -128,23 +128,12 @@ public class PdfExportService {
             document.open();
 
             // Render elements from docx in sequential order (preserving table placement)
-            int elementsRendered = 0;
             for (IBodyElement elem : docx.getBodyElements()) {
                 if (elem.getElementType() == BodyElementType.PARAGRAPH) {
-                    if (renderDocxParagraph(document, (XWPFParagraph) elem)) {
-                        elementsRendered++;
-                    }
+                    renderDocxParagraph(document, (XWPFParagraph) elem);
                 } else if (elem.getElementType() == BodyElementType.TABLE) {
-                    if (renderDocxTable(document, (XWPFTable) elem)) {
-                        elementsRendered++;
-                    }
+                    renderDocxTable(document, (XWPFTable) elem);
                 }
-            }
-
-            // Ensure document has at least one element so OpenPDF never throws "The document has no pages"
-            if (elementsRendered == 0) {
-                Paragraph emptyPlaceholder = new Paragraph(" ", FONT_BODY);
-                document.add(emptyPlaceholder);
             }
 
             document.close();
@@ -167,23 +156,19 @@ public class PdfExportService {
         }
     }
 
-    private boolean renderDocxParagraph(Document document, XWPFParagraph p) throws Exception {
-        // Honor explicit page breaks from Word
-        if (p.isPageBreak() || (p.getCTP() != null && p.getCTP().getPPr() != null && p.getCTP().getPPr().isSetPageBreakBefore())) {
-            document.newPage();
-        }
-
+    private void renderDocxParagraph(Document document, XWPFParagraph p) throws Exception {
         List<DocxImageData> images = extractImagesFromParagraph(p);
         String text = p.getText().trim();
 
         // If no text and no images, nothing to render
         if (text.isEmpty() && images.isEmpty()) {
-            return false;
+            return;
         }
 
         // Standalone image paragraph (no text, only image)
         if (text.isEmpty()) {
-            return renderDocxImages(document, images, p.getAlignment());
+            renderDocxImages(document, images, p.getAlignment());
+            return;
         }
 
         // Skip header duplicates and footer duplicates if template was already embedded in text
@@ -195,12 +180,12 @@ public class PdfExportService {
                 || upper.contains("FOOD POINT")
                 || upper.contains("CLASSES 6TH")
                 || upper.equals("ALPHA TUTOR")) {
-            return false;
+            return;
         }
 
         // Skip any leftover dummy student info table text
         if (upper.contains("STUDENT NAME:") && upper.contains("ROLL NO:")) {
-            return false;
+            return;
         }
 
         // Headings: MUST be bold and centre aligned
@@ -214,7 +199,7 @@ public class PdfExportService {
             pdfPara.setSpacingAfter(6);
             document.add(pdfPara);
             renderDocxImages(document, images, p.getAlignment());
-            return true;
+            return;
         }
 
         // Check if this is a Question (e.g., "1. ", "1) ", "Q1. ", "Question 1: ")
@@ -225,7 +210,7 @@ public class PdfExportService {
             pdfPara.setIndentationLeft(10);
             document.add(pdfPara);
             renderDocxImages(document, images, p.getAlignment());
-            return true;
+            return;
         }
 
         // Check if this is a Bullet point (Word native bullet or bullet character in text)
@@ -250,7 +235,7 @@ public class PdfExportService {
             pdfPara.setIndentationLeft(indent);
             document.add(pdfPara);
             renderDocxImages(document, images, p.getAlignment());
-            return true;
+            return;
         }
 
         // Check if this is a Sub-item or Option: (a), (b), (i), (ii), etc.
@@ -261,7 +246,7 @@ public class PdfExportService {
             pdfPara.setIndentationLeft(22);
             document.add(pdfPara);
             renderDocxImages(document, images, p.getAlignment());
-            return true;
+            return;
         }
 
         // Regular paragraph: preserve runs, styles, and alignment
@@ -277,7 +262,6 @@ public class PdfExportService {
         }
         document.add(pdfPara);
         renderDocxImages(document, images, p.getAlignment());
-        return true;
     }
 
     private List<DocxImageData> extractImagesFromParagraph(XWPFParagraph p) {
@@ -345,16 +329,15 @@ public class PdfExportService {
         return images;
     }
 
-    private boolean renderDocxImages(Document document, List<DocxImageData> images, ParagraphAlignment alignment) {
+    private void renderDocxImages(Document document, List<DocxImageData> images, ParagraphAlignment alignment) {
         if (images == null || images.isEmpty()) {
-            return false;
+            return;
         }
 
         float maxUsableWidth = PageSize.A4.getWidth() - MARGIN_LEFT - MARGIN_RIGHT; // ~523.28pt
         float maxUsableHeight = PageSize.A4.getHeight() - MARGIN_TOP - MARGIN_BOTTOM - 20f; // ~651.89pt
 
         byte[] headerBytes = loadHeaderImageBytes();
-        boolean anyRendered = false;
 
         for (DocxImageData imgData : images) {
             try {
@@ -395,12 +378,10 @@ public class PdfExportService {
                 img.setSpacingAfter(8f);
 
                 document.add(img);
-                anyRendered = true;
             } catch (Exception e) {
                 log.warn("Could not render embedded DOCX image to PDF: {}", e.getMessage());
             }
         }
-        return anyRendered;
     }
 
     private Paragraph buildPdfParagraphFromDocx(XWPFParagraph p, Font baseFont, String prependText) {
@@ -422,14 +403,7 @@ public class PdfExportService {
         for (XWPFRun r : runs) {
             String rText = r.text();
             if (rText == null || rText.isEmpty()) {
-                if (r.getCTR() != null && r.getCTR().sizeOfBrArray() > 0) {
-                    pdfPara.add(new Chunk("\n".repeat(r.getCTR().sizeOfBrArray()), baseFont));
-                }
                 continue;
-            }
-
-            if (r.getCTR() != null && r.getCTR().sizeOfBrArray() > 0) {
-                rText = rText + "\n".repeat(r.getCTR().sizeOfBrArray());
             }
 
             if (firstRun && prependText == null) {
@@ -522,15 +496,15 @@ public class PdfExportService {
         return false;
     }
 
-    private boolean renderDocxTable(Document document, XWPFTable table) throws Exception {
+    private void renderDocxTable(Document document, XWPFTable table) throws Exception {
         if (table.getRows().isEmpty()) {
-            return false;
+            return;
         }
 
         // Filter out dummy student box table if present
         String tableText = table.getText().toUpperCase();
         if (tableText.contains("STUDENT NAME:") && tableText.contains("ROLL NO:")) {
-            return false;
+            return;
         }
 
         int maxCols = 0;
@@ -671,7 +645,6 @@ public class PdfExportService {
         }
 
         document.add(pdfTable);
-        return true;
     }
 
     private int getCellColSpan(XWPFTableCell cell) {
